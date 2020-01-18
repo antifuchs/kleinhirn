@@ -1,14 +1,14 @@
 use anyhow::{Context, Result};
 use futures::Stream;
+use nix::errno::Errno;
 use nix::sys::wait::{waitpid, WaitPidFlag};
 use nix::unistd::Pid;
-use parking_lot::Mutex;
-use slog_scope::{debug, info};
+use slog_scope::info;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::task;
-use tokio::{io, io::AsyncReadExt, net::UnixStream};
+use std::task::Poll;
+use tokio::{io::AsyncReadExt, net::UnixStream};
 
 /// Sets the current process as the "child subreaper", and sets up a SIGCHLD handler for
 /// asynchronously waking up & reaping all eligible children. The reaped children's PIDs are
@@ -36,22 +36,20 @@ impl Stream for Zombies {
         mut self: Pin<&mut Self>,
         cx: &mut task::Context,
     ) -> task::Poll<Option<Result<Pid>>> {
-        use task::Poll::*;
-
         let mut buf = vec![0u8; 256];
         loop {
             let mut read = self.socket.read_buf(&mut buf);
             let rp = Pin::new(&mut read);
             match rp.poll(cx) {
-                NotReady => {
+                Poll::Pending => {
                     // we'll get woken up when the next SIGCHLD comes in.
                     break;
                 }
                 // We're definitely ready to reap children; but clear out any pending bytes from the
                 // pipe before we start (this also schedules this stream to be polled when bytes are
                 // ready).
-                Ready(Ok(_)) => (),
-                Ready(Err(e)) => {
+                Poll::Ready(Ok(_)) => (),
+                Poll::Ready(Err(e)) => {
                     return task::Poll::Ready(Some(Err(e.into())));
                 }
             }
@@ -69,7 +67,7 @@ impl Stream for Zombies {
             Ok(StillAlive) => task::Poll::Pending,
 
             // peaceful: we have no children.
-            Err(ECHILD) => task::Poll::Pending,
+            Err(nix::Error::Sys(Errno::ECHILD)) => task::Poll::Pending,
 
             // any other error: probably not great.
             Err(e) => task::Poll::Ready(Some(Err(e.into()))),

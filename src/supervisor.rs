@@ -3,12 +3,12 @@
 //! This is the "root" process of the kleinhirn process hierarchy. It listens for external
 //! commands, spawns the configured number of workers and supervises them.
 
-use anyhow::{Context, Result};
-use futures::executor::block_on;
+use anyhow::Result;
+
 use futures::StreamExt;
 use nix::unistd::Pid;
 use slog_scope::info;
-use std::convert::Infallible;
+
 use std::time::Duration;
 use tokio::time::delay_for;
 

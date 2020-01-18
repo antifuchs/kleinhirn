@@ -1,9 +1,7 @@
 use anyhow::Result;
 use slog::{o, Drain, Logger};
 use slog_scope::info;
-use std::convert::Infallible;
 
-use tokio::prelude::*;
 use tokio::runtime::Runtime;
 
 pub mod supervisor;
@@ -13,7 +11,6 @@ fn create_logger() -> Logger {
     // TODO: Use json logging
     let decorator = slog_term::PlainSyncDecorator::new(std::io::stderr());
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
-    // let drain = slog_async::Async::new(drain).build().fuse();
     Logger::root(drain, o!("logger" => "kleinhirn"))
 }
 
@@ -23,8 +20,7 @@ fn main() -> Result<()> {
     let log = create_logger();
     let _guard = slog_scope::set_global_logger(log);
 
-    info!("hi!");
-
+    info!("startup");
     rt.block_on(async {
         supervisor::run().await?;
 
