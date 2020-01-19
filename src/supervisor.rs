@@ -10,13 +10,11 @@ use nix::unistd::Pid;
 use slog_scope::info;
 
 use std::time::Duration;
-use tokio::time::delay_for;
 
 mod control;
 mod worker;
 
-// #[cfg(target_os = "linux")]
-mod child_processes_linux;
+pub mod reaper;
 
 enum Event {
     /// A potential worker process (or one of its orphaned children) has exited.
@@ -41,31 +39,8 @@ pub async fn supervise(
     Ok(())
 }
 
-fn fork_child() -> Result<()> {
-    use nix::unistd::{fork, ForkResult};
-    match fork() {
-        Ok(ForkResult::Parent { child, .. }) => info!("I'm the parent and that's ok"; "pid" => 
-        child.as_raw()),
-        Ok(ForkResult::Child) => {
-            std::thread::sleep(Duration::from_millis(400));
-            info!("I'm a new child process, exiting now!");
-            std::process::exit(0);
-        }
-        Err(e) => {
-            return Err(e.into());
-        }
-    };
-    Ok(())
-}
-
 pub async fn run() -> Result<()> {
-    let terminations = child_processes_linux::setup_child_exit_handler()?;
-
-    // fork a few, so we have something to reap:
-    fork_child()?;
-    fork_child()?;
-    fork_child()?;
-    delay_for(Duration::from_secs(1)).await;
+    let terminations = reaper::setup_child_exit_handler()?;
 
     info!("done waiting, let's reap");
     supervise(terminations).await

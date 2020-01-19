@@ -4,7 +4,7 @@ use slog_scope::info;
 
 use tokio::runtime::Runtime;
 
-pub mod supervisor;
+use kleinhirn::*;
 
 fn create_logger() -> Logger {
     // This should do for now, but

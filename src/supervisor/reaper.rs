@@ -14,7 +14,7 @@ use tokio::{io::AsyncReadExt, net::UnixStream};
 /// asynchronously waking up & reaping all eligible children. The reaped children's PIDs are
 /// returned in a stream.
 pub fn setup_child_exit_handler() -> Result<Zombies> {
-    // TODO: use prctl so set up the subreaper reaper state
+    // TODO: use prctl to set up the subreaper reaper state
 
     let (read, write) = std::os::unix::net::UnixStream::pair()
         .context("Could not initialize signal handler socket pair")?;
@@ -71,6 +71,8 @@ impl Stream for Zombies {
 
             // any other error: probably not great.
             Err(e) => task::Poll::Ready(Some(Err(e.into()))),
+
+            // Anything else is a status change we don't care about. On to the next one:
             _ => task::Poll::Pending,
         }
     }
