@@ -1,7 +1,5 @@
-use serde::export::Formatter;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::fmt;
 use std::path::PathBuf;
 
 #[derive(Deserialize)]

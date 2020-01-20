@@ -10,23 +10,11 @@ use futures::StreamExt;
 use nix::unistd::Pid;
 use slog::o;
 use slog_scope::info;
-use std::time::Duration;
 
 mod control;
 mod worker;
 
 pub mod reaper;
-
-enum Event {
-    /// A potential worker process (or one of its orphaned children) has exited.
-    ChildExited(nix::unistd::Pid),
-
-    /// An out-of-band management command was issued.
-    ExternalCommand(control::Command),
-
-    /// A worker has sent a command down our communication channel.
-    WorkerAction(worker::ID, worker::Event),
-}
 
 /// Supervises child processes and their children.
 ///
