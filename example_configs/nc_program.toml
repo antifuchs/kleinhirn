@@ -1,0 +1,7 @@
+[supervisor]
+name = "nc-as-a-program"
+
+[worker]
+type = "program"
+cmdline = ["nc", "-vvvl", "127.0.0.1", "8000"]
+cwd = "/"

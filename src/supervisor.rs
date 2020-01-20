@@ -5,10 +5,11 @@
 
 use anyhow::Result;
 
+use crate::configuration;
 use futures::StreamExt;
 use nix::unistd::Pid;
+use slog::o;
 use slog_scope::info;
-
 use std::time::Duration;
 
 mod control;
@@ -39,9 +40,11 @@ pub async fn supervise(
     Ok(())
 }
 
-pub async fn run() -> Result<()> {
-    let terminations = reaper::setup_child_exit_handler()?;
+pub async fn run(settings: configuration::Config) -> Result<()> {
+    let _g = slog_scope::set_global_logger(
+        slog_scope::logger().new(o!("service" => settings.supervisor.name.to_string())),
+    );
 
-    info!("done waiting, let's reap");
+    let terminations = reaper::setup_child_exit_handler()?;
     supervise(terminations).await
 }
