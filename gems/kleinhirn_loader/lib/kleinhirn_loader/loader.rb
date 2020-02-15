@@ -4,7 +4,6 @@
 require 'kleinhirn_loader'
 require 'kleinhirn_loader/env'
 
-require 'logger'
 require 'set'
 
 module KleinhirnLoader
@@ -17,7 +16,6 @@ module KleinhirnLoader
         .void
     end
     def initialize(name, version, expression, status_io)
-      @log = T.let(initial_logger, Logger)
       @name = name
       @version = version
       @expression = expression
@@ -31,13 +29,19 @@ module KleinhirnLoader
         .void
     end
     def load_entrypoint(entry_point)
-      log.info("Loading #{entry_point.inspect}...")
+      process_name = "#{@name}/#{@version} ::KleinhirnLoader::Loader loading #{entry_point}"
+      Process.setproctitle(process_name)
+
+      @status_io.puts "loading: #{entry_point}"
       load(entry_point)
-      @status_io.puts 'ready'
     end
 
     sig { void }
     def repl
+      process_name = "#{@name}/#{@version} ::KleinhirnLoader::Loader"
+      Process.setproctitle(process_name)
+
+      @status_io.puts "ready: #{@version}"
       loop do
         case line = @status_io.gets&.chomp!
         when nil
@@ -45,31 +49,18 @@ module KleinhirnLoader
         when /\Aspawn\s+(.+)\z/
           id = Regexp.last_match(1)
           if @worker_ids.include?(id)
-            log.error("Attempted to spawn second worker with ID #{id}")
             @status_io.puts("fail #{id}: duplicate worker ID")
           else
             fork_one(id)
             @worker_ids << id
           end
         else
-          log.error("Invalid command #{line.inspect} received, ignoring.")
+          @status_io.puts("error: command_syntax")
         end
       end
     end
 
     private
-
-    sig { returns(Logger) }
-    attr_reader :log
-
-    sig do
-      returns(Logger)
-    end
-    def initial_logger
-      logger = Logger.new(STDERR)
-      logger.progname = 'kleinhirn_loader'
-      logger
-    end
 
     # An empty (except for sorbet type annotations) binding
     class Empty
@@ -111,8 +102,8 @@ module KleinhirnLoader
         return
       end
 
-      # This is the first sub-child. Prepare our environment and fork
-      # again:
+      # This is the first sub-child. Prepare our environment, fork
+      # again, announce it and exit:
       setup_child_environment(child_id)
       if (pid = Process.fork)
         @status_io.puts "launched #{child_id}: #{pid}"
@@ -122,7 +113,6 @@ module KleinhirnLoader
       # Now we're in the worker - start it up.
       process_name = "#{@name}/#{@version} ::KleinhirnLoader::Worker #{child_id} - startup"
       Process.setproctitle(process_name)
-      log.info("Worker #{process_name} running #{@expression.inspect}...")
       eval(@expression, Empty.new.to_binding) # rubocop:disable Security/Eval
       exit(0)
     end
