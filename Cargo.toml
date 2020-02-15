@@ -30,6 +30,9 @@ tag-message = "Release {{prefix}}{{version}}"
 dev-version-ext = "dev"
 tag-prefix = "v"
 
+[package.metadata.template_ci]
+test_commandline = "cargo xtask ci"
+
 [package.metadata.template_ci.clippy]
 allow_failure = false
 version = "stable"

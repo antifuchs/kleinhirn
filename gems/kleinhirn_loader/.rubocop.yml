@@ -14,7 +14,7 @@ Layout/LineLength:
   AllowURI: true
   AllowHeredoc: true
 
-Name/MethodParameterName:
+Naming/MethodParameterName:
   MinNameLength: 2
 
 Style/IfUnlessModifier:
