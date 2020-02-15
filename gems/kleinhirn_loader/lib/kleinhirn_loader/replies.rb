@@ -29,14 +29,11 @@ module KleinhirnLoader
         @file = file
       end
 
-      sig { returns(String) }
-      attr_reader :file
-
       sig { override.params(_args: T.untyped).returns(String) }
       def to_json(*_args)
         {
           'action': 'loading',
-          'file': file,
+          'file': @file,
         }.to_json
       end
     end
@@ -63,20 +60,14 @@ module KleinhirnLoader
         @error = error
       end
 
-      sig { returns(String) }
-      attr_reader :message
-
-      sig { returns(Exception) }
-      attr_reader :error
-
       sig { override.params(_args: T.untyped).returns(String) }
       def to_json(*_args)
         val = {
           'action': 'error',
-          'message': message,
+          'message': @message,
         }
-        if error
-          val['error'] = error
+        if @error
+          val['error'] = @error
         end
         val.to_json
       end
@@ -93,18 +84,12 @@ module KleinhirnLoader
         @message = message
       end
 
-      sig { returns(String) }
-      attr_reader :id
-
-      sig { returns(String) }
-      attr_reader :message
-
       sig { override.params(_args: T.untyped).returns(String) }
       def to_json(*_args)
         val = {
           'action': 'failed',
-          'message': message,
-          'id': id,
+          'message': @message,
+          'id': @id,
         }.to_json
       end
     end
@@ -113,21 +98,20 @@ module KleinhirnLoader
     # running its start ruby expression.
     class Launched < AbstractReply
       sig do
-        params(id: String)
+        params(id: String, pid: Integer)
           .void
       end
-      def initialize(id)
+      def initialize(id, pid)
         @id = id
+        @pid = pid
       end
-
-      sig { returns(String) }
-      attr_reader :id
 
       sig { override.params(_args: T.untyped).returns(String) }
       def to_json(*_args)
         val = {
           'action': 'launched',
-          'id': id,
+          'id': @id,
+          'pid': @pid,
         }.to_json
       end
     end
@@ -143,14 +127,11 @@ module KleinhirnLoader
         @id = id
       end
 
-      sig { returns(String) }
-      attr_reader :id
-
       sig { override.params(_args: T.untyped).returns(String) }
       def to_json(*_args)
         val = {
           'action': 'ack',
-          'id': id,
+          'id': @id,
         }.to_json
       end
     end

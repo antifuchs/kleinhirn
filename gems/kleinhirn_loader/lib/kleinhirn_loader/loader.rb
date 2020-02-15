@@ -57,7 +57,7 @@ module KleinhirnLoader
         when KleinhirnLoader::Command::Spawn
           id = command.id
           if @worker_ids.include?(id)
-            state_update(KleinhirnLoader::Replies::Failed.new(@worker_ids, "duplicate ID"))
+            state_update(KleinhirnLoader::Replies::Failed.new(id, "duplicate ID"))
           else
             fork_one(id)
             @worker_ids << id
@@ -124,7 +124,7 @@ module KleinhirnLoader
       # again, announce it and exit:
       setup_child_environment(child_id)
       if (pid = Process.fork)
-        state_update(KleinhirnLoader::Replies::Launched.new(child_id))
+        state_update(KleinhirnLoader::Replies::Launched.new(child_id, pid))
         exit(0)
       end
 
