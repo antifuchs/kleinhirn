@@ -8,6 +8,9 @@ module KleinhirnLoader
       # The ID that was assigned to the worker by the supervisor process.
       WorkerID = new('KLEINHIRN_WORKER_ID')
 
+      # Name of the supervision group, for appropriate process naming
+      Name = new('KLEINHIRN_NAME')
+
       # The status FD number.
       StatusFD = new('KLEINHIRN_STATUS_FD')
     end

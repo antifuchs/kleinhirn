@@ -5,6 +5,7 @@
 require 'kleinhirn_loader/worker'
 
 def kleinhirn_main
+  sleep 2
   KleinhirnLoader::Worker.new.done
 
   puts Dir.pwd

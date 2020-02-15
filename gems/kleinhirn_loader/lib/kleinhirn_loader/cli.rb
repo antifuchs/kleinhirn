@@ -14,7 +14,8 @@ module KleinhirnLoader
     end
     def self.main(args)
       options = {
-        status_fd: KleinhirnLoader::DEFAULT_STATUS_FD
+        status_fd: KleinhirnLoader::DEFAULT_STATUS_FD,
+        name: File.basename(Dir.pwd),
       }
       load_files = []
       entrypoint = T.let(nil, T.nilable(String))
@@ -29,6 +30,10 @@ module KleinhirnLoader
         opts.on('-e EXPR', '--eval=EXPR', 'Run this expression in workers') do |expression|
           raise "Only one --eval argument can be used at a time." unless entrypoint.nil?
           entrypoint = expression
+        end
+
+        opts.on('-n NAME', '--name=NAME', 'Name that should be assigned to workers') do |name|
+          options[:name] = name
         end
 
         opts.on('--status-fd FD', 'Status FD to use for communicating with supervisor') do |status_fd|
@@ -49,7 +54,7 @@ module KleinhirnLoader
       end
 
       status_fd = T.let(IO.new(options.fetch(:status_fd)), IO)
-      kh = KleinhirnLoader::Loader.new(entrypoint, status_fd)
+      kh = KleinhirnLoader::Loader.new(options[:name], entrypoint, status_fd)
       load_files.each { |f| kh.load_entrypoint(f) }
       kh.repl
     end

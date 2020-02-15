@@ -27,11 +27,15 @@ module KleinhirnLoader
     def confirm_loaded
       fd = KleinhirnLoader::Env::StatusFD.env&.to_i
       worker_id = KleinhirnLoader::Env::WorkerID.env
+      name = KleinhirnLoader::Env::Name.env
       return false if fd.nil? || worker_id.nil?
 
       status_io = IO.new(fd)
       status_io.puts("ok #{worker_id}")
       status_io.close
+
+      process_name = "#{name} ::KleinhirnLoader::Worker #{worker_id}"
+      Process.setproctitle(process_name)
       true
     end
 
