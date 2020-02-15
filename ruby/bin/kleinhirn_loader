@@ -1,0 +1,17 @@
+#!/usr/bin/env ruby
+# typed: false
+# frozen_string_literal: true
+
+require 'kleinhirn_loader'
+
+def main
+  if ARGV.length != 2
+    raise "USAGE: #{$PROGRAM_NAME} entrypoint_file.rb entrypoint_expression"
+  end
+
+  kh = KleinhirnLoader.new(ARGV[2])
+  kh.load_entrypoint(ARGV[1])
+  kh.repl
+end
+
+main if $PROGRAM_NAME == __FILE__

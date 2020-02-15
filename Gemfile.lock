@@ -1,0 +1,39 @@
+PATH
+  remote: ruby
+  specs:
+    kleinhirn_loader (0.1.0)
+      sorbet-runtime
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    ast (2.4.0)
+    jaro_winkler (1.5.4)
+    parallel (1.19.1)
+    parser (2.7.0.2)
+      ast (~> 2.4.0)
+    rainbow (3.0.0)
+    rubocop (0.79.0)
+      jaro_winkler (~> 1.5.1)
+      parallel (~> 1.10)
+      parser (>= 2.7.0.1)
+      rainbow (>= 2.2.2, < 4.0)
+      ruby-progressbar (~> 1.7)
+      unicode-display_width (>= 1.4.0, < 1.7)
+    ruby-progressbar (1.10.1)
+    sorbet (0.5.5369)
+      sorbet-static (= 0.5.5369)
+    sorbet-runtime (0.5.5369)
+    sorbet-static (0.5.5369-universal-darwin-14)
+    unicode-display_width (1.6.1)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  kleinhirn_loader!
+  rubocop
+  sorbet
+
+BUNDLED WITH
+   1.17.2
