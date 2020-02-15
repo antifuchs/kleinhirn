@@ -3,8 +3,10 @@
 
 require 'kleinhirn_loader'
 require 'kleinhirn_loader/env'
+require 'kleinhirn_loader/command'
 
 require 'set'
+require 'json'
 
 module KleinhirnLoader
   # Logic for the actual preloading "server" process
@@ -36,6 +38,8 @@ module KleinhirnLoader
       load(entry_point)
     end
 
+    # Runs the command loop for the kleinhirn worker. The command loop
+    # protocol is JSONL (newline-separated json objects).
     sig { void }
     def repl
       process_name = "#{@name}/#{@version} ::KleinhirnLoader::Loader"
@@ -43,19 +47,24 @@ module KleinhirnLoader
 
       @status_io.puts "ready: #{@version}"
       loop do
-        case @status_io.gets&.chomp!
-        when nil
+        unless (line = @status_io.gets&.chomp!)
           exit(0)
-        when /\Aspawn\s+(.+)\z/
-          id = Regexp.last_match(1)
+        end
+
+        command = KleinhirnLoader::Command.parse(line)
+        case command
+        when KleinhirnLoader::Command::Spawn
+          id = command.id
           if @worker_ids.include?(id)
             @status_io.puts("fail #{id}: duplicate worker ID")
           else
             fork_one(id)
             @worker_ids << id
           end
+        when KleinhirnLoader::Command::Error
+          @status_io.puts("error: #{command.error.inspect}")
         else
-          @status_io.puts('error: command_syntax')
+          T.absurd(command)
         end
       end
     end
