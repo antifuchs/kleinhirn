@@ -6,7 +6,9 @@
 use anyhow::Result;
 
 use crate::configuration;
+use crate::configuration::WorkerConfig;
 use futures::StreamExt;
+use machine::*;
 use nix::unistd::Pid;
 use slog::o;
 use slog_scope::info;

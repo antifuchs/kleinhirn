@@ -13,10 +13,10 @@ pub struct Config {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SupervisorConfig {
     /// Name of the supervised service. Determines logging fields and defaults for the socket
-    /// name.   
+    /// name.
     pub name: String,
 
     /// UNIX domain socket on which to listen for commands. Defaults to "/tmp/kleinhirn-<name>.sock".
@@ -27,7 +27,7 @@ pub struct SupervisorConfig {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct WorkerConfig {
     /// Number of workers to spawn. Default: 1
     #[serde(default = "default_count")]
@@ -44,7 +44,7 @@ fn default_count() -> usize {
 #[derive(Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum WorkerKind {
     /// Supervise a program that gets forked & exec'ed [`WorkerConfig.count`] times. This does
     /// not support any variable substitution
@@ -60,5 +60,24 @@ pub enum WorkerKind {
         /// The directory to chdir into before running the above commandline.
         cwd: Option<PathBuf>,
     },
-    // TODO: Ruby, Python and the rest
+
+    /// Supervise a bundled ruby program that can be preloaded. That
+    /// bundle is expected to include the `kleinhirn_loader` gem,
+    /// which is then launched via the following expression:
+    ///
+    /// ```sh
+    /// bundle exec --gemfile=<gemfile_path> --keep-file-descriptors \
+    ///             kleinhirn_loader -- <load> <start_expression>
+    /// ```
+    Ruby {
+        /// The pathname identifying the Gemfile for the bundled ruby
+        /// application.
+        gemfile: PathBuf,
+
+        /// A ruby file that can be `load`ed.
+        load: PathBuf,
+
+        /// A ruby expression that each worker runs in order to start.
+        start_expression: String,
+    },
 }

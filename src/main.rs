@@ -14,9 +14,11 @@ fn create_logger() -> Logger {
     Logger::root(drain, o!("logger" => "kleinhirn"))
 }
 
+/// A prefork process supervisor that keeps worker processes alive, with pre-loading.
 #[derive(StructOpt, Debug)]
 #[structopt(name = "kleinhirn")]
 struct Opt {
+    /// Path to the configuration file to use for the service.
     #[structopt(short = "f", long, default_value = "./kleinhirn.toml")]
     config_file: PathBuf,
 }

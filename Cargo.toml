@@ -47,6 +47,8 @@ slog = "2.5.2"
 slog-term = "2.4.2"
 slog-scope = "4.3.0"
 tokio = {version = "0.2.9", features = ["io-util", "uds", "time", "rt-core"] }
+machine = "0.3.0"
 
 [dev-dependencies]
 rusty-fork = "0.2.2"
+mockall = "0.6.0"
