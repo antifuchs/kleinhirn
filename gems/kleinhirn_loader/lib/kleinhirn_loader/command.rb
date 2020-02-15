@@ -10,10 +10,11 @@ module KleinhirnLoader
     extend T::Helpers
 
     abstract!
+    sealed!
 
     sig do
       params(line: String)
-        .returns(T.any(Spawn, Error))
+        .returns(Command)
     end
     def self.parse(line)
       begin

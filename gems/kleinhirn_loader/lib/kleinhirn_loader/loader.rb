@@ -4,6 +4,7 @@
 require 'kleinhirn_loader'
 require 'kleinhirn_loader/env'
 require 'kleinhirn_loader/command'
+require 'kleinhirn_loader/replies'
 
 require 'set'
 require 'json'
@@ -34,7 +35,7 @@ module KleinhirnLoader
       process_name = "#{@name}/#{@version} ::KleinhirnLoader::Loader loading #{entry_point}"
       Process.setproctitle(process_name)
 
-      @status_io.puts "loading: #{entry_point}"
+      state_update(KleinhirnLoader::Replies::Loading.new(entry_point))
       load(entry_point)
     end
 
@@ -45,7 +46,7 @@ module KleinhirnLoader
       process_name = "#{@name}/#{@version} ::KleinhirnLoader::Loader"
       Process.setproctitle(process_name)
 
-      @status_io.puts "ready: #{@version}"
+      state_update(KleinhirnLoader::Replies::Ready.new)
       loop do
         unless (line = @status_io.gets&.chomp!)
           exit(0)
@@ -56,13 +57,13 @@ module KleinhirnLoader
         when KleinhirnLoader::Command::Spawn
           id = command.id
           if @worker_ids.include?(id)
-            @status_io.puts("fail #{id}: duplicate worker ID")
+            state_update(KleinhirnLoader::Replies::Failed.new(@worker_ids, "duplicate ID"))
           else
             fork_one(id)
             @worker_ids << id
           end
         when KleinhirnLoader::Command::Error
-          @status_io.puts("error: #{command.error.inspect}")
+          state_update(KleinhirnLoader::Replies::Error.new("in command processing", command.error))
         else
           T.absurd(command)
         end
@@ -70,6 +71,14 @@ module KleinhirnLoader
     end
 
     private
+
+    sig do
+      params(reply: KleinhirnLoader::Replies::AbstractReply)
+        .void
+    end
+    def state_update(reply)
+      @status_io.puts(reply.to_json)
+    end
 
     # An empty (except for sorbet type annotations) binding
     class Empty
@@ -107,7 +116,7 @@ module KleinhirnLoader
       if (pid = Process.fork)
         # we're the initial parent - wait for the immediate child.
         until pid == Process.waitpid(pid); end
-        @status_io.puts "fail #{child_id}: non-zero exit" unless $?.exitstatus.zero?
+        state_update(KleinhirnLoader::Replies::Failed.new(child_id, "non-zero exit")) unless $?.exitstatus.zero?
         return
       end
 
@@ -115,7 +124,7 @@ module KleinhirnLoader
       # again, announce it and exit:
       setup_child_environment(child_id)
       if (pid = Process.fork)
-        @status_io.puts "launched #{child_id}: #{pid}"
+        state_update(KleinhirnLoader::Replies::Launched.new(child_id))
         exit(0)
       end
 

@@ -3,6 +3,7 @@
 
 require 'kleinhirn_loader'
 require 'kleinhirn_loader/env'
+require 'kleinhirn_loader/replies'
 
 module KleinhirnLoader
   # Worker processes - confirmation that startup is finished and
@@ -33,7 +34,7 @@ module KleinhirnLoader
       return false if fd.nil? || worker_id.nil?
 
       status_io = IO.new(fd)
-      status_io.puts("ok #{worker_id}")
+      status_io.puts(KleinhirnLoader::Replies::Ack.new(worker_id).to_json)
       status_io.close
 
       process_name = "#{name}/#{version} ::KleinhirnLoader::Worker #{worker_id}"

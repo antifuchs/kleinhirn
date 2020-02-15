@@ -28,3 +28,9 @@ Style/GuardClause:
 
 Style/RedundantBegin:
   Enabled: false
+
+Style/TrailingCommaInHashLiteral:
+  EnforcedStyleForMultiline: comma
+
+Style/TrailingCommaInArrayLiteral:
+  EnforcedStyleForMultiline: comma
