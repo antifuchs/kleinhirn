@@ -43,7 +43,7 @@ module KleinhirnLoader
 
       @status_io.puts "ready: #{@version}"
       loop do
-        case line = @status_io.gets&.chomp!
+        case @status_io.gets&.chomp!
         when nil
           exit(0)
         when /\Aspawn\s+(.+)\z/
@@ -55,7 +55,7 @@ module KleinhirnLoader
             @worker_ids << id
           end
         else
-          @status_io.puts("error: command_syntax")
+          @status_io.puts('error: command_syntax')
         end
       end
     end
