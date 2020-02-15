@@ -13,12 +13,13 @@ module KleinhirnLoader
     extend T::Sig
 
     sig do
-      params(name: String, expression: String, status_io: IO)
+      params(name: String, version: String, expression: String, status_io: IO)
         .void
     end
-    def initialize(name, expression, status_io)
+    def initialize(name, version, expression, status_io)
       @log = T.let(initial_logger, Logger)
       @name = name
+      @version = version
       @expression = expression
       @status_io = status_io
       @worker_ids = T.let(Set.new(), T::Set[String])
@@ -92,6 +93,7 @@ module KleinhirnLoader
       Dir.chdir('/')
       KleinhirnLoader::Env::WorkerID.env = child_id
       KleinhirnLoader::Env::Name.env = @name
+      KleinhirnLoader::Env::Version.env = @version
       KleinhirnLoader::Env::StatusFD.env = @status_io.fileno.to_s
     end
 
@@ -118,7 +120,7 @@ module KleinhirnLoader
       exit(0) if Process.fork
 
       # Now we're in the worker - start it up.
-      process_name = "#{@name} ::KleinhirnLoader::Worker #{child_id} - startup"
+      process_name = "#{@name}/#{@version} ::KleinhirnLoader::Worker #{child_id} - startup"
       Process.setproctitle(process_name)
       log.info("Worker #{process_name} running #{@expression.inspect}...")
       eval(@expression, Empty.new.to_binding) # rubocop:disable Security/Eval

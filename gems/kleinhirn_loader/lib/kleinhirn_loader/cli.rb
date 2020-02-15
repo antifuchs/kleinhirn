@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'optparse'
+require 'securerandom'
 require 'kleinhirn_loader/loader'
 
 module KleinhirnLoader
@@ -16,6 +17,7 @@ module KleinhirnLoader
       options = {
         status_fd: KleinhirnLoader::DEFAULT_STATUS_FD,
         name: File.basename(Dir.pwd),
+        version: SecureRandom.uuid,
       }
       load_files = []
       entrypoint = T.let(nil, T.nilable(String))
@@ -36,8 +38,12 @@ module KleinhirnLoader
           options[:name] = name
         end
 
-        opts.on('--status-fd FD', 'Status FD to use for communicating with supervisor') do |status_fd|
+        opts.on('--status-fd=FD', 'Status FD to use for communicating with supervisor') do |status_fd|
           options[:status_fd] = status_fd.to_i
+        end
+
+        opts.on('--code-version=VERSION', 'String that identifies the version of code. Defaults to a random UUID.') do |version|
+          options[:version] = version
         end
       end
       op.parse!(args)
@@ -54,7 +60,8 @@ module KleinhirnLoader
       end
 
       status_fd = T.let(IO.new(options.fetch(:status_fd)), IO)
-      kh = KleinhirnLoader::Loader.new(options[:name], entrypoint, status_fd)
+      kh = KleinhirnLoader::Loader.new(options[:name], options[:version],
+                                       entrypoint, status_fd)
       load_files.each { |f| kh.load_entrypoint(f) }
       kh.repl
     end
