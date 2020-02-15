@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 require 'optparse'
-require 'kleinhirn_loader'
+require 'kleinhirn_loader/loader'
 
 module KleinhirnLoader
   class CLI
