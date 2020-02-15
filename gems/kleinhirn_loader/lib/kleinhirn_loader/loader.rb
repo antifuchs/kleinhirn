@@ -88,8 +88,7 @@ module KleinhirnLoader
       params(child_id: String).
         void
     end
-    def clean_child_environment(child_id)
-      STDIN.close
+    def setup_child_environment(child_id)
       Dir.chdir('/')
       KleinhirnLoader::Env::WorkerID.env = child_id
       KleinhirnLoader::Env::Name.env = @name
@@ -114,10 +113,13 @@ module KleinhirnLoader
         return
       end
 
-      # This is the first sub-child. Unset most of our environment and
-      # fork again:
-      clean_child_environment(child_id)
-      exit(0) if Process.fork
+      # This is the first sub-child. Prepare our environment and fork
+      # again:
+      setup_child_environment(child_id)
+      if (pid = Process.fork)
+        @status_io.puts "launched #{child_id}: #{pid}"
+        exit(0)
+      end
 
       # Now we're in the worker - start it up.
       process_name = "#{@name}/#{@version} ::KleinhirnLoader::Worker #{child_id} - startup"
