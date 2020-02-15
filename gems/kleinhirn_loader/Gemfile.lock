@@ -1,5 +1,5 @@
 PATH
-  remote: ruby
+  remote: .
   specs:
     kleinhirn_loader (0.1.0)
       sorbet-runtime

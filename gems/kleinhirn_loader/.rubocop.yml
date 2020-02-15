@@ -1,0 +1,21 @@
+# inherit_from: .rubocop_todo.yml
+
+AllCops:
+  TargetRubyVersion: 2.6
+
+Metrics:
+  Enabled: false
+
+Layout/SpaceInsideBlockBraces:
+  Enabled: true
+
+Layout/LineLength:
+  Max: 120
+  AllowURI: true
+  AllowHeredoc: true
+
+Style/IfUnlessModifier:
+  Enabled: false
+
+Style/SpecialGlobalVars:
+  Enabled: false

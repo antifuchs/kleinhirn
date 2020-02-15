@@ -1,0 +1,1 @@
+gem 'kleinhirn_loader', path: '../../'
