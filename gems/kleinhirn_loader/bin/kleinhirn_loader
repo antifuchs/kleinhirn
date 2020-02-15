@@ -2,10 +2,6 @@
 # typed: false
 # frozen_string_literal: true
 
-require 'kleinhirn_loader'
+require 'kleinhirn_loader/cli'
 
-raise "USAGE: #{$PROGRAM_NAME} entrypoint_file.rb entrypoint_expression" if ARGV.length != 3
-
-kh = KleinhirnLoader.new(ARGV[2])
-kh.load_entrypoint(ARGV[1])
-kh.repl
+KleinhirnLoader::CLI.main(ARGV)
