@@ -22,7 +22,7 @@ module KleinhirnLoader
       @version = version
       @expression = expression
       @status_io = status_io
-      @worker_ids = T.let(Set.new(), T::Set[String])
+      @worker_ids = T.let(Set.new, T::Set[String])
     end
 
     # Loads the input source file and, if successful, prints "ready".
@@ -43,7 +43,7 @@ module KleinhirnLoader
         when nil
           exit(0)
         when /\Aspawn\s+(.+)\z/
-          id = $1
+          id = Regexp.last_match(1)
           if @worker_ids.include?(id)
             log.error("Attempted to spawn second worker with ID #{id}")
             @status_io.puts("fail #{id}: duplicate worker ID")
@@ -85,8 +85,8 @@ module KleinhirnLoader
     #  * Close stdin
     #  * change working directory to `/`
     sig do
-      params(child_id: String).
-        void
+      params(child_id: String)
+        .void
     end
     def setup_child_environment(child_id)
       Dir.chdir('/')
@@ -100,15 +100,13 @@ module KleinhirnLoader
     # discarded. If the intermediary child exited with a non-zero exit
     # status, returns `false`.
     sig do
-      params(child_id: String).
-        void
+      params(child_id: String)
+        .void
     end
     def fork_one(child_id)
       if (pid = Process.fork)
         # we're the initial parent - wait for the immediate child.
-        until pid == (exited_pid = Process.waitpid(pid))
-          log.warn("False intermediary #{exited_pid} exited with status #{$?.exitstatus}")
-        end
+        until pid == Process.waitpid(pid); end
         @status_io.puts "fail #{child_id}: non-zero exit" unless $?.exitstatus.zero?
         return
       end

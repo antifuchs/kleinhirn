@@ -4,6 +4,8 @@
 module KleinhirnLoader
   # Contains all the environment variables that the kleinhirn loader sets.
   class Env < T::Enum
+    extend T::Sig
+
     enums do
       # The ID that was assigned to the worker by the supervisor process.
       WorkerID = new('KLEINHIRN_WORKER_ID')

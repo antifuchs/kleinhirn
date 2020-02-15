@@ -19,3 +19,6 @@ Style/IfUnlessModifier:
 
 Style/SpecialGlobalVars:
   Enabled: false
+
+Style/GuardClause:
+  Enabled: false

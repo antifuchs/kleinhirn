@@ -21,6 +21,7 @@ module KleinhirnLoader
     end
 
     private
+
     sig do
       returns(T::Boolean)
     end
