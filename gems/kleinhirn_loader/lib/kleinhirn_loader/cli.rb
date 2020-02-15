@@ -18,7 +18,7 @@ module KleinhirnLoader
       options = {
         status_fd: KleinhirnLoader::DEFAULT_STATUS_FD,
         name: File.basename(Dir.pwd),
-        version: SecureRandom.uuid
+        version: SecureRandom.uuid,
       }
       load_files = []
       entrypoint = T.let(nil, T.nilable(String))

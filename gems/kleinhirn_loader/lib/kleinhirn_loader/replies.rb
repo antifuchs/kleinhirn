@@ -86,7 +86,7 @@ module KleinhirnLoader
 
       sig { override.params(_args: T.untyped).returns(String) }
       def to_json(*_args)
-        val = {
+        {
           'action': 'failed',
           'message': @message,
           'id': @id,
@@ -108,7 +108,7 @@ module KleinhirnLoader
 
       sig { override.params(_args: T.untyped).returns(String) }
       def to_json(*_args)
-        val = {
+        {
           'action': 'launched',
           'id': @id,
           'pid': @pid,
@@ -129,7 +129,7 @@ module KleinhirnLoader
 
       sig { override.params(_args: T.untyped).returns(String) }
       def to_json(*_args)
-        val = {
+        {
           'action': 'ack',
           'id': @id,
         }.to_json

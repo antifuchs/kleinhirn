@@ -57,13 +57,13 @@ module KleinhirnLoader
         when KleinhirnLoader::Command::Spawn
           id = command.id
           if @worker_ids.include?(id)
-            state_update(KleinhirnLoader::Replies::Failed.new(id, "duplicate ID"))
+            state_update(KleinhirnLoader::Replies::Failed.new(id, 'duplicate ID'))
           else
             fork_one(id)
             @worker_ids << id
           end
         when KleinhirnLoader::Command::Error
-          state_update(KleinhirnLoader::Replies::Error.new("in command processing", command.error))
+          state_update(KleinhirnLoader::Replies::Error.new('in command processing', command.error))
         else
           T.absurd(command)
         end
@@ -116,7 +116,7 @@ module KleinhirnLoader
       if (pid = Process.fork)
         # we're the initial parent - wait for the immediate child.
         until pid == Process.waitpid(pid); end
-        state_update(KleinhirnLoader::Replies::Failed.new(child_id, "non-zero exit")) unless $?.exitstatus.zero?
+        state_update(KleinhirnLoader::Replies::Failed.new(child_id, 'non-zero exit')) unless $?.exitstatus.zero?
         return
       end
 
