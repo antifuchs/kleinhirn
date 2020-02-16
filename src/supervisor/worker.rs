@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::configuration::WorkerConfig;
 use machine::*;
 use nix::sys::signal::{kill, Signal};
@@ -6,12 +8,6 @@ use std::{fmt::Debug, sync::Arc};
 
 #[cfg_attr(test, faux::create(self_type = "Arc"))]
 pub struct ProcessManager {}
-
-impl ProcessManager {
-    pub fn new() -> Arc<Self> {
-        Arc::new(ProcessManager {})
-    }
-}
 
 impl PartialEq for ProcessManager {
     fn eq(&self, _other: &ProcessManager) -> bool {
@@ -33,7 +29,7 @@ impl ProcessManager {
         kill(pid, signal)
     }
 
-    pub fn launch_new(&self, n: usize) { // TODO: probably needs error handling
+    pub fn launch_new(&self, _n: usize) { // TODO: probably needs error handling
 
         // also TODO: talk to preloader
     }

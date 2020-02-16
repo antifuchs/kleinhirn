@@ -1,6 +1,4 @@
 use anyhow::Result;
-use futures::stream::StreamExt;
-use futures::Stream;
 use kleinhirn::supervisor::reaper::*;
 use nix::unistd::Pid;
 use rusty_fork::*;
@@ -34,17 +32,17 @@ rusty_fork_test! {
         rt.block_on(async {
             let mut zombies = setup_child_exit_handler().expect("Should be able to setup");
 
-            let child = zombies.next().await.expect("end of stream").expect("Waiting for child");
+            let child = zombies.next().await.expect("end of stream");
             assert_eq!(child, pid);
 
             let pid = fork_child().expect("first fork");
             delay_for(Duration::from_millis(100)).await; // XXX: not ideal that we're testing by sleep, but ugh.
-            let child = zombies.next().await.expect("end of stream").expect("Waiting for child");
+            let child = zombies.next().await.expect("end of stream");
             assert_eq!(child, pid);
 
             let pid = fork_child().expect("2nd fork");
             delay_for(Duration::from_millis(100)).await;
-            let child = zombies.next().await.expect("end of stream").expect("Waiting for child");
+            let child = zombies.next().await.expect("end of stream");
             assert_eq!(child, pid);
         });
     }

@@ -6,12 +6,10 @@
 use anyhow::Result;
 
 use crate::configuration;
-use crate::configuration::WorkerConfig;
-use futures::StreamExt;
-use machine::*;
-use nix::unistd::Pid;
+use reaper::Zombies;
 use slog::o;
 use slog_scope::info;
+use std::convert::Infallible;
 
 mod control;
 mod worker;
@@ -21,16 +19,14 @@ pub mod reaper;
 /// Supervises child processes and their children.
 ///
 /// This function never exits in the "normal" case.
-pub async fn supervise(
-    mut zombies: impl futures::Stream<Item = Result<Pid>> + std::marker::Unpin,
-) -> Result<()> {
-    while let Some(Ok(pid)) = zombies.next().await {
+pub async fn supervise(mut zombies: Zombies) -> Result<Infallible> {
+    loop {
+        let pid = zombies.next().await?;
         info!("reaped child"; "pid" => pid.as_raw());
     }
-    Ok(())
 }
 
-pub async fn run(settings: configuration::Config) -> Result<()> {
+pub async fn run(settings: configuration::Config) -> Result<Infallible> {
     let _g = slog_scope::set_global_logger(
         slog_scope::logger().new(o!("service" => settings.supervisor.name.to_string())),
     );
