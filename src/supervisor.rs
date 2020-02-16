@@ -21,7 +21,7 @@ pub mod reaper;
 /// This function never exits in the "normal" case.
 pub async fn supervise(mut zombies: Zombies) -> Result<Infallible> {
     loop {
-        let pid = zombies.next().await?;
+        let pid = zombies.reap().await?;
         info!("reaped child"; "pid" => pid.as_raw());
     }
 }

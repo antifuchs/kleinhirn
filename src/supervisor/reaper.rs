@@ -25,7 +25,7 @@ pub struct Zombies {
 }
 
 impl Zombies {
-    pub async fn next(&mut self) -> Result<Pid> {
+    pub async fn reap(&mut self) -> Result<Pid> {
         let flags = WaitPidFlag::empty() | WaitPidFlag::WNOHANG; // TODO: use WEXITED on linux
         use nix::sys::wait::WaitStatus::*;
         loop {

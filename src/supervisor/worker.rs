@@ -181,7 +181,7 @@ impl Terminating {
         let mut state = self.state;
         state.worker_died(d.0);
 
-        if state.pids.len() > 0 {
+        if !state.pids.is_empty() {
             WorkerSet::terminating(state)
         } else {
             WorkerSet::terminated()
