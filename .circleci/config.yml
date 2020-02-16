@@ -1,4 +1,4 @@
-# TemplateCIConfig { bench: BenchEntry(MatrixEntry { run: false, run_cron: false, version: "nightly", install_commandline: None, commandline: "cargo bench", timeout: None }), clippy: ClippyEntry(MatrixEntry { run: true, run_cron: false, version: "stable", install_commandline: Some("rustup component add clippy"), commandline: "cargo clippy -- -D warnings", timeout: None }), rustfmt: RustfmtEntry(MatrixEntry { run: true, run_cron: false, version: "stable", install_commandline: Some("rustup component add rustfmt"), commandline: "cargo fmt -v -- --check", timeout: None }), additional_matrix_entries: {"ruby_tests": CustomEntry(MatrixEntry { run: true, run_cron: true, version: "ruby2.6", install_commandline: Some("cargo xtask ruby-bundle"), commandline: "cargo xtask ruby-ci", timeout: None })}, cache: "cargo", os: "linux", dist: "xenial", versions: ["stable", "nightly"], test_commandline: "cargo test --verbose --all", scheduled_test_branches: ["master"], test_schedule: "0 0 * * 0", executors: [ExecutorEntry { name: "stable", image_name: "liuchong/rustup:stable" }, ExecutorEntry { name: "beta", image_name: "liuchong/rustup:beta" }, ExecutorEntry { name: "nightly", image_name: "liuchong/rustup:nightly" }], additional_executors: [ExecutorEntry { name: "ruby2.6", image_name: "ruby:2.6" }] }
+# TemplateCIConfig { bench: BenchEntry(MatrixEntry { run: false, run_cron: false, version: "nightly", install_commandline: None, commandline: "cargo bench", timeout: None }), clippy: ClippyEntry(MatrixEntry { run: true, run_cron: false, version: "stable", install_commandline: Some("rustup component add clippy"), commandline: "cargo clippy -- -D warnings", timeout: None }), rustfmt: RustfmtEntry(MatrixEntry { run: true, run_cron: false, version: "stable", install_commandline: Some("rustup component add rustfmt"), commandline: "cargo fmt -v -- --check", timeout: None }), additional_matrix_entries: {"ruby_tests": CustomEntry(MatrixEntry { run: true, run_cron: true, version: "ruby2_6", install_commandline: Some("cargo xtask ruby-bundle"), commandline: "cargo xtask ruby-ci", timeout: None })}, cache: "cargo", os: "linux", dist: "xenial", versions: ["stable", "nightly"], test_commandline: "cargo test --verbose --all", scheduled_test_branches: ["master"], test_schedule: "0 0 * * 0", executors: [ExecutorEntry { name: "stable", image_name: "liuchong/rustup:stable" }, ExecutorEntry { name: "beta", image_name: "liuchong/rustup:beta" }, ExecutorEntry { name: "nightly", image_name: "liuchong/rustup:nightly" }], additional_executors: [ExecutorEntry { name: "ruby2_6", image_name: "ruby:2.6" }] }
 version: "2.1"
 
 executors: {
@@ -16,7 +16,7 @@ executors: {
       }
     ]
   },
-  "ruby2.6": {
+  "ruby2_6": {
     "docker": [
       {
         "image": "ruby:2.6"
@@ -189,8 +189,8 @@ workflows:
 }
       - ruby_tests:
           name: "ruby_tests"
-          version: ruby2.6
-          version_name: ruby2.6
+          version: ruby2_6
+          version_name: ruby2_6
       - ci_success:
           requires:
           - test-stable
@@ -210,8 +210,8 @@ workflows:
           version_name: nightly
       - ruby_tests:
           name: "ruby_tests"
-          version: "ruby2.6"
-          version_name: "ruby2.6"
+          version: "ruby2_6"
+          version_name: "ruby2_6"
     triggers:
       - schedule:
           cron: 0 0 * * 0
