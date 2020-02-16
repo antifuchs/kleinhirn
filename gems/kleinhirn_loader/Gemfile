@@ -2,6 +2,7 @@
 
 source 'https://rubygems.org'
 
+gem 'rake', group: :development
 gem 'rubocop', group: :development
 gem 'sorbet', group: :development
 

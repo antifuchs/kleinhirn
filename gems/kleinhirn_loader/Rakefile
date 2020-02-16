@@ -1,0 +1,12 @@
+# typed: strict
+# frozen_string_literal: true
+
+task default: %w[ci]
+
+task :ci do
+  Dir.chdir(File.dirname(__FILE__))
+  puts '=== Sorbet ==='
+  sh 'srb tc'
+  puts '=== Sorbet ==='
+  sh 'rubocop'
+end

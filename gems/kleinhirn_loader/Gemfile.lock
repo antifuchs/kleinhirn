@@ -13,6 +13,7 @@ GEM
     parser (2.7.0.2)
       ast (~> 2.4.0)
     rainbow (3.0.0)
+    rake (12.3.2)
     rubocop (0.79.0)
       jaro_winkler (~> 1.5.1)
       parallel (~> 1.10)
@@ -32,6 +33,7 @@ PLATFORMS
 
 DEPENDENCIES
   kleinhirn_loader!
+  rake
   rubocop
   sorbet
 

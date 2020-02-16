@@ -6,9 +6,9 @@ image_name = "ruby:2.6"
 allow_failure = false
 version = "stable"
 
-[additional_matrix_entries.ruby_tests]
+[additional_matrix_entries.ruby_ci_kleinhirn_loader]
 run_cron = true
 run = true
 version = "ruby2_6"
-install_commandline = "cargo xtask ruby-bundle"
-commandline = "cargo xtask ruby-ci"
+install_commandline = "bundle install --gemfile=gems/kleinhirn_loader/Gemfile"
+commandline = "bundle exec --gemfile=gems/kleinhirn_loader/Gemfile rake ci -f gems/kleinhirn_loader/Rakefile"
