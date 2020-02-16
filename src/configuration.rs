@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Config {
     pub supervisor: SupervisorConfig,
     pub worker: WorkerConfig,
@@ -13,7 +13,7 @@ pub struct Config {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SupervisorConfig {
     /// Name of the supervised service. Determines logging fields and defaults for the socket
     /// name.
@@ -27,7 +27,7 @@ pub struct SupervisorConfig {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WorkerConfig {
     /// Number of workers to spawn. Default: 1
     #[serde(default = "default_count")]
@@ -44,7 +44,7 @@ fn default_count() -> usize {
 #[derive(Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum WorkerKind {
     /// Supervise a program that gets forked & exec'ed [`WorkerConfig.count`] times. This does
     /// not support any variable substitution
