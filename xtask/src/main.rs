@@ -8,7 +8,8 @@ use std::{
 fn main() -> Result<()> {
     let task = env::args().nth(1);
     match task.as_ref().map(|it| it.as_str()) {
-        Some("ci") => test_ci()?,
+        Some("ruby-ci") => test_ruby_ci()?,
+        Some("ruby-bundle") => test_ruby_bundle()?,
         _ => print_help(),
     }
     Ok(())
@@ -17,16 +18,20 @@ fn main() -> Result<()> {
 fn print_help() {
     eprintln!(
         "Tasks:
-ci	Runs the CI test suite
+ruby-bundle	Installs all rubygems' bundles
+ruby-ci		Runs the CI test suite
 "
     )
 }
 
-fn test_ci() -> Result<()> {
+fn test_ruby_bundle() -> Result<()> {
     run("bundle install", "./gems/kleinhirn_loader")?;
+    Ok(())
+}
+
+fn test_ruby_ci() -> Result<()> {
     run("bundle exec srb tc", "./gems/kleinhirn_loader")?;
     run("bundle exec rubocop", "./gems/kleinhirn_loader")?;
-    run("cargo test", ".")?;
     Ok(())
 }
 

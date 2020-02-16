@@ -1,16 +1,36 @@
-# TemplateCIConfig { bench: BenchEntry(MatrixEntry { run: false, run_cron: false, version: "nightly", install_commandline: None, commandline: "cargo bench", timeout: None }), clippy: ClippyEntry(MatrixEntry { run: true, run_cron: false, version: "stable", install_commandline: Some("rustup component add clippy"), commandline: "cargo clippy -- -D warnings", timeout: None }), rustfmt: RustfmtEntry(MatrixEntry { run: true, run_cron: false, version: "stable", install_commandline: Some("rustup component add rustfmt"), commandline: "cargo fmt -v -- --check", timeout: None }), additional_matrix_entries: {}, cache: "cargo", os: "linux", dist: "xenial", versions: ["stable", "nightly"], test_commandline: "cargo xtask ci", scheduled_test_branches: ["master"], test_schedule: "0 0 * * 0" }
+# TemplateCIConfig { bench: BenchEntry(MatrixEntry { run: false, run_cron: false, version: "nightly", install_commandline: None, commandline: "cargo bench", timeout: None }), clippy: ClippyEntry(MatrixEntry { run: true, run_cron: false, version: "stable", install_commandline: Some("rustup component add clippy"), commandline: "cargo clippy -- -D warnings", timeout: None }), rustfmt: RustfmtEntry(MatrixEntry { run: true, run_cron: false, version: "stable", install_commandline: Some("rustup component add rustfmt"), commandline: "cargo fmt -v -- --check", timeout: None }), additional_matrix_entries: {"ruby_tests": CustomEntry(MatrixEntry { run: true, run_cron: true, version: "ruby2.6", install_commandline: Some("cargo xtask ruby-bundle"), commandline: "cargo xtask ruby-ci", timeout: None })}, cache: "cargo", os: "linux", dist: "xenial", versions: ["stable", "nightly"], test_commandline: "cargo test --verbose --all", scheduled_test_branches: ["master"], test_schedule: "0 0 * * 0", executors: [ExecutorEntry { name: "stable", image_name: "liuchong/rustup:stable" }, ExecutorEntry { name: "beta", image_name: "liuchong/rustup:beta" }, ExecutorEntry { name: "nightly", image_name: "liuchong/rustup:nightly" }], additional_executors: [ExecutorEntry { name: "ruby2.6", image_name: "ruby:2.6" }] }
 version: "2.1"
 
-executors:
-  stable:
-    docker:
-      - image: liuchong/rustup:stable
-  nightly:
-    docker:
-      - image: liuchong/rustup:nightly
-  beta:
-    docker:
-      - image: liuchong/rustup:beta
+executors: {
+  "beta": {
+    "docker": [
+      {
+        "image": "liuchong/rustup:beta"
+      }
+    ]
+  },
+  "nightly": {
+    "docker": [
+      {
+        "image": "liuchong/rustup:nightly"
+      }
+    ]
+  },
+  "ruby2.6": {
+    "docker": [
+      {
+        "image": "ruby:2.6"
+      }
+    ]
+  },
+  "stable": {
+    "docker": [
+      {
+        "image": "liuchong/rustup:stable"
+      }
+    ]
+  }
+}
 
 commands:
   cargo_test:
@@ -24,7 +44,7 @@ commands:
           command: "rustc --version"
       - run:
           name: Test
-          command: cargo xtask ci
+          command: cargo test --verbose --all
 
 jobs:
   test:
@@ -78,6 +98,23 @@ jobs:
       - run:
           name: Bench
           command: cargo bench
+  ruby_tests:
+    parameters:
+      version:
+        type: executor
+      version_name:
+        type: string
+    executor: << parameters.version >>
+    environment:
+      CI_RUST_VERSION: << parameters.version_name >>
+    steps:
+      - checkout
+      - run:
+          name: Install
+          command: cargo xtask ruby-bundle
+      - run:
+          name: cargo xtask ruby-ci
+          command: cargo xtask ruby-ci
 
   ci_success:
     docker:
@@ -150,12 +187,17 @@ workflows:
     ]
   }
 }
+      - ruby_tests:
+          name: "ruby_tests"
+          version: ruby2.6
+          version_name: ruby2.6
       - ci_success:
           requires:
           - test-stable
           - test-nightly
           - rustfmt
           - clippy
+          - ruby_tests
   scheduled_tests:
     jobs:
       - test:
@@ -166,6 +208,10 @@ workflows:
           name: test-nightly
           version: nightly
           version_name: nightly
+      - ruby_tests:
+          name: "ruby_tests"
+          version: "ruby2.6"
+          version_name: "ruby2.6"
     triggers:
       - schedule:
           cron: 0 0 * * 0

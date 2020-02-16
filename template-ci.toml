@@ -1,0 +1,14 @@
+[[additional_executors]]
+name = "ruby2.6"
+image_name = "ruby:2.6"
+
+[clippy]
+allow_failure = false
+version = "stable"
+
+[additional_matrix_entries.ruby_tests]
+run_cron = true
+run = true
+version = "ruby2.6"
+install_commandline = "cargo xtask ruby-bundle"
+commandline = "cargo xtask ruby-ci"
