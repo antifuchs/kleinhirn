@@ -1,192 +1,53 @@
-#![allow(dead_code)]
+#![allow(dead_code)] // TODO: use this.
 
-use crate::configuration::WorkerConfig;
 use machine::*;
-use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
-use std::{fmt::Debug, sync::Arc};
-
-#[cfg_attr(test, faux::create(self_type = "Arc"))]
-pub struct ProcessManager {}
-
-impl PartialEq for ProcessManager {
-    fn eq(&self, _other: &ProcessManager) -> bool {
-        true
-    }
-}
-
-impl Eq for ProcessManager {}
-
-impl Debug for ProcessManager {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Ok(())
-    }
-}
-
-#[cfg_attr(test, faux::methods(self_type = "Arc"))]
-impl ProcessManager {
-    pub fn kill_process(&self, pid: Pid, signal: Signal) -> Result<(), nix::Error> {
-        kill(pid, signal)
-    }
-
-    pub fn launch_new(&self, _n: usize) { // TODO: probably needs error handling
-
-        // also TODO: talk to preloader
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct State {
-    pids: Vec<Pid>,
-    config: WorkerConfig,
-    process_manager: Arc<ProcessManager>,
-}
-
-impl State {
-    fn new_worker(&mut self, pid: Pid) {
-        self.pids.push(pid);
-    }
-
-    fn worker_died(&mut self, dead: Pid) {
-        self.pids.retain(|pid| *pid == dead);
-    }
-
-    fn kill_all_workers(&self) -> Result<(), nix::Error> {
-        for pid in self.pids.iter() {
-            self.process_manager.kill_process(*pid, Signal::SIGTERM)?;
-        }
-        Ok(())
-    }
-}
+use serde::Deserialize;
 
 machine! {
     #[derive(Clone, Debug, PartialEq)]
-    pub enum WorkerSet {
-        Startup { state: State },
-        Running { state: State },
-        Underprovisioned { state: State },
-        Overprovisioned { state: State },
-        Faulted { state: State },
-        Terminating { state: State },
-        Terminated {},
+    pub enum Worker {
+        Starting,
+        Up,
+        Dead,
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Ack {
+    id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Failed {
+    id: String,
+    message: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct WorkerDeath(Pid);
+pub struct Reaped {
+    pid: Pid,
+}
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct WorkerStarted(Pid);
+transitions!(Worker, [
+    (Starting, Failed) => Dead,
+    (Starting, Ack) => Up,
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Terminate();
+    (Up, Reaped) => Dead
+]);
 
-transitions!(WorkerSet,
-  [
-    (Startup, WorkerStarted) => [Running, Startup],
-    (Startup, WorkerDeath) => Faulted,
-    (Startup, Terminate) => Terminating,
-
-    (Running, WorkerDeath) => Underprovisioned,
-    (Running, WorkerStarted) => Running,
-    (Running, Terminate) => Terminating,
-
-    (Underprovisioned, WorkerStarted) => [Running, Underprovisioned],
-    (Underprovisioned, WorkerDeath) => [Underprovisioned, Faulted],
-    (Underprovisioned, Terminate) => Terminating,
-
-    (Terminating, WorkerDeath) => [Terminating, Terminated]
-  ]
-);
-
-impl Running {
-    fn on_worker_death(self, d: WorkerDeath) -> Underprovisioned {
-        let mut state = self.state;
-        state.worker_died(d.0);
-
-        // TODO: start a new worker somehow
-        Underprovisioned { state }
+impl Starting {
+    pub fn on_failed(self, _f: Failed) -> Dead {
+        Dead {}
     }
 
-    fn on_worker_started(self, s: WorkerStarted) -> Running {
-        let mut state = self.state;
-        state.new_worker(s.0);
-        Running { state }
-    }
-
-    fn on_terminate(self, _: Terminate) -> Terminating {
-        let state = self.state;
-        state.kill_all_workers().expect("TODO: handle error");
-        Terminating { state }
+    pub fn on_ack(self, _a: Ack) -> Up {
+        Up {}
     }
 }
 
-impl Startup {
-    fn on_worker_started(self, s: WorkerStarted) -> WorkerSet {
-        let mut state = self.state;
-        state.new_worker(s.0);
-
-        if state.pids.len() >= state.config.count {
-            WorkerSet::running(state)
-        } else {
-            state.process_manager.launch_new(1); // TODO: allow configuring
-            WorkerSet::startup(state)
-        }
-    }
-
-    fn on_worker_death(self, d: WorkerDeath) -> Faulted {
-        let mut state = self.state;
-        state.worker_died(d.0);
-        Faulted { state }
-    }
-
-    fn on_terminate(self, _: Terminate) -> Terminating {
-        let state = self.state;
-        state.kill_all_workers().expect("TODO: handle kill error");
-        Terminating { state }
+impl Up {
+    pub fn on_reaped(self, _r: Reaped) -> Dead {
+        Dead {}
     }
 }
-
-impl Underprovisioned {
-    fn on_worker_started(self, s: WorkerStarted) -> WorkerSet {
-        let mut state = self.state;
-        state.new_worker(s.0);
-
-        if state.pids.len() >= state.config.count {
-            state.process_manager.launch_new(1); // TODO: allow configuring
-            WorkerSet::running(state)
-        } else {
-            WorkerSet::underprovisioned(state)
-        }
-    }
-
-    fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
-        let mut state = self.state;
-        state.worker_died(d.0);
-        state.process_manager.launch_new(1);
-
-        // TODO: allow configuring how many simultaneous deaths make a faulted service.
-        WorkerSet::faulted(state)
-    }
-
-    fn on_terminate(self, _: Terminate) -> Terminating {
-        let state = self.state;
-        state.kill_all_workers().expect("TODO: handle kill error");
-        Terminating { state }
-    }
-}
-
-impl Terminating {
-    fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
-        let mut state = self.state;
-        state.worker_died(d.0);
-
-        if !state.pids.is_empty() {
-            WorkerSet::terminating(state)
-        } else {
-            WorkerSet::terminated()
-        }
-    }
-}
-
-impl WorkerSet {}

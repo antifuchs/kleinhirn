@@ -1,0 +1,9 @@
+[supervisor]
+name = "continually-restarting-sleeper"
+
+[worker]
+count = 3
+type = "ruby"
+gemfile = "../gems/kleinhirn_loader/examples/sleeper_agent/Gemfile"
+load = "../gems/kleinhirn_loader/examples/sleeper_agent/sleeper_agent.rb"
+start_expression = "kleinhirn_main"

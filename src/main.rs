@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use kleinhirn::*;
 use slog::{o, Drain, Logger};
 use slog_scope::info;
-use std::path::PathBuf;
+use std::{env::current_dir, path::PathBuf};
 use structopt::StructOpt;
 use tokio::runtime::Runtime;
 
@@ -30,14 +30,17 @@ fn main() -> Result<()> {
     let log = create_logger();
     let _guard = slog_scope::set_global_logger(log);
 
+    let config_file = opt.config_file.canonicalize()?;
     let mut settings = config::Config::default();
-    settings.merge(config::File::from(opt.config_file.as_path()))?;
-    let settings = settings
+    settings.merge(config::File::from(config_file.as_path()))?;
+    let mut settings = settings
         .try_into::<configuration::Config>()
         .context(format!(
             "Could not parse configuration file {:?}",
-            &opt.config_file
+            &config_file
         ))?;
+    let cwd = current_dir()?;
+    settings.base_dir = config_file.parent().map(|p| p.to_owned()).unwrap_or(cwd);
     info!("startup");
     rt.block_on(async {
         supervisor::run(settings).await?;

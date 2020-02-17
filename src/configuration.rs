@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -8,7 +8,15 @@ use std::path::PathBuf;
 pub struct Config {
     pub supervisor: SupervisorConfig,
     pub worker: WorkerConfig,
-    // TODO: binding sockets
+
+    #[serde(skip)]
+    pub base_dir: PathBuf,
+}
+
+impl Config {
+    pub(crate) fn canonical_path<P: AsRef<Path>>(&self, path: P) -> PathBuf {
+        self.base_dir.join(path)
+    }
 }
 
 #[derive(Deserialize)]
@@ -42,6 +50,30 @@ fn default_count() -> usize {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Program {
+    pub cmdline: Vec<String>,
+    pub env: HashMap<String, String>,
+    pub cwd: Option<PathBuf>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Ruby {
+    /// The pathname identifying the Gemfile for the bundled ruby
+    /// application.
+    pub gemfile: PathBuf,
+
+    /// A ruby file that can be `load`ed.
+    pub load: PathBuf,
+
+    /// A ruby expression that each worker runs in order to start.
+    pub start_expression: String,
+}
+
+#[derive(Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -49,17 +81,7 @@ pub enum WorkerKind {
     /// Supervise a program that gets forked & exec'ed [`WorkerConfig.count`] times. This does
     /// not support any variable substitution
     /// or shell expansion.
-    Program {
-        /// The commandline as an array of arguments.
-        cmdline: Vec<String>,
-
-        /// Environment variables that should be set before the program spawns.
-        #[serde(default)]
-        env: HashMap<String, String>,
-
-        /// The directory to chdir into before running the above commandline.
-        cwd: Option<PathBuf>,
-    },
+    Program(Program),
 
     /// Supervise a bundled ruby program that can be preloaded. That
     /// bundle is expected to include the `kleinhirn_loader` gem,
@@ -69,15 +91,5 @@ pub enum WorkerKind {
     /// bundle exec --gemfile=<gemfile_path> --keep-file-descriptors \
     ///             kleinhirn_loader -- <load> <start_expression>
     /// ```
-    Ruby {
-        /// The pathname identifying the Gemfile for the bundled ruby
-        /// application.
-        gemfile: PathBuf,
-
-        /// A ruby file that can be `load`ed.
-        load: PathBuf,
-
-        /// A ruby expression that each worker runs in order to start.
-        start_expression: String,
-    },
+    Ruby(Ruby),
 }
