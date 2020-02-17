@@ -10,6 +10,7 @@ fn main() -> Result<()> {
     match task.as_ref().map(|it| it.as_str()) {
         Some("ruby-ci") => test_ruby_ci()?,
         Some("ruby-bundle") => test_ruby_bundle()?,
+        Some("test") => test()?,
         _ => print_help(),
     }
     Ok(())
@@ -20,6 +21,7 @@ fn print_help() {
         "Tasks:
 ruby-bundle	Installs all rubygems' bundles
 ruby-ci		Runs the CI test suite
+test		Runs tests under linux (uses docker if on another OS)
 "
     )
 }
@@ -32,6 +34,21 @@ fn test_ruby_bundle() -> Result<()> {
 fn test_ruby_ci() -> Result<()> {
     run("bundle exec srb tc", "./gems/kleinhirn_loader")?;
     run("bundle exec rubocop", "./gems/kleinhirn_loader")?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn test() -> Result<()> {
+    run("cargo test", "./")?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn test() -> Result<()> {
+    run(
+        "env DOCKER_BUILDKIT=1 docker build --rm --progress=plain .",
+        "./",
+    )?;
     Ok(())
 }
 
