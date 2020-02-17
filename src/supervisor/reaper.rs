@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use nix::errno::Errno;
 use nix::sys::wait::{waitpid, WaitPidFlag};
 use nix::unistd::Pid;
-use slog_scope::info;
+use slog_scope::debug;
 use tokio::{io::AsyncReadExt, net::UnixStream};
 
 /// Sets the current process as the "child subreaper", and sets up a SIGCHLD handler for
@@ -27,24 +27,27 @@ pub struct Zombies {
 impl Zombies {
     pub async fn reap(&mut self) -> Result<Pid> {
         let flags = WaitPidFlag::empty() | WaitPidFlag::WNOHANG; // TODO: use WEXITED on linux
+
         use nix::sys::wait::WaitStatus::*;
         loop {
             match waitpid(None, Some(flags)) {
-                Ok(Exited(pid, _)) => {
-                    info!("detected exited process"; "pid" => pid.as_raw());
+                Ok(Exited(pid, _)) | Ok(Signaled(pid, _, _)) => {
                     // At least one child is ready to be reaped; return the first one and then
                     // schedule this for waking up again:
                     return Ok(pid);
                 }
                 Ok(StillAlive) |
                 // peaceful: we have no children.
-                Err(nix::Error::Sys(Errno::ECHILD)) => {}
+                Err(nix::Error::Sys(Errno::ECHILD)) => {
+                }
 
                 // any other error: probably not great.
                 Err(e) => {return Err(e.into());}
 
                 // Anything else is a status change we don't care about. On to the next one:
-                _ => {}
+                e @ _ => {
+                    debug!("weird process change detected that we'll ignore"; "change" => format!("{:?}", e));
+                }
             }
 
             // No processes are ready to be reaped, schedule us to get
