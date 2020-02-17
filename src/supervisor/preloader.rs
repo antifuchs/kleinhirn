@@ -22,7 +22,9 @@ pub trait ProcessControl {
     /// preloader will resolve here when the code is loaded.
     async fn initialize(&mut self) -> Result<()>;
 
-    async fn spawn_process(&mut self) -> Result<(String, Pid)>;
+    async fn spawn_process(&mut self, id: &str) -> Result<Pid>;
+
+    async fn until_ready(&mut self) -> Result<String>;
 }
 
 #[derive(PartialEq, Debug, Deserialize)]
@@ -100,10 +102,6 @@ impl Preloader {
         let msg: PreloaderMessage = serde_json::from_str(&line)?;
         Ok(msg)
     }
-
-    pub async fn spawn(&mut self) -> Result<(String, Pid)> {
-        todo!("fill me out");
-    }
 }
 
 #[async_trait]
@@ -129,8 +127,12 @@ impl ProcessControl for Preloader {
         }
     }
 
-    async fn spawn_process(&mut self) -> Result<(String, Pid)> {
-        self.spawn().await
+    async fn spawn_process(&mut self, _id: &str) -> Result<Pid> {
+        todo!("fill me out");
+    }
+
+    async fn until_ready(&mut self) -> Result<String> {
+        todo!("need to figure out how to wait")
     }
 }
 
@@ -149,7 +151,15 @@ impl ProcessControl for ForkExec {
         // No preparation necessary - we're ready to launch immediately.
         Ok(())
     }
-    async fn spawn_process(&mut self) -> Result<(String, Pid)> {
+    async fn spawn_process(&mut self, _id: &str) -> Result<Pid> {
         todo!("no idea yet how to spawn!")
+    }
+
+    async fn until_ready(&mut self) -> Result<String> {
+        // Nothing to do for fork/exec programs here, we just assume
+        // they're ready immediately.
+
+        // TODO: maybe we can in fact do worker acking, but ehhh for now.
+        Ok("".to_string())
     }
 }
