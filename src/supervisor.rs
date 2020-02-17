@@ -21,7 +21,16 @@ mod worker_set;
 
 pub mod reaper;
 
-async fn supervise(mut zombies: Zombies, mut proc: Box<dyn ProcessControl>) -> Infallible {
+// let's try (at least on this function call level) to ensure all
+// problematic conditions are handled in a way that doesn't leave this
+// loop:
+#[forbid(
+    clippy::option_unwrap_used,
+    clippy::result_unwrap_used,
+    clippy::option_expect_used,
+    clippy::result_expect_used
+)]
+async fn supervise(mut zombies: Zombies, _proc: Box<dyn ProcessControl>) -> Infallible {
     loop {
         select! {
             res = zombies.reap().fuse() =>{
