@@ -21,13 +21,14 @@ mod worker_set;
 
 pub mod reaper;
 
-async fn supervise(mut zombies: Zombies, mut proc: Box<dyn ProcessControl>) -> Result<Infallible> {
-    proc.as_mut().initialize().await?;
+async fn supervise(mut zombies: Zombies, mut proc: Box<dyn ProcessControl>) -> Infallible {
     loop {
         select! {
             res = zombies.reap().fuse() =>{
-                let pid = res?;
-                info!("reaped child"; "pid" => pid.as_raw())
+                match res {
+                    Ok(pid) => info!("reaped child"; "pid" => pid.as_raw()),
+                    Err(e) => info!("failed to reap"; "error" => format!("{:?}", e))
+                }
             }
         };
     }
@@ -41,7 +42,7 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
         slog_scope::logger().new(o!("service" => settings.supervisor.name.to_string())),
     );
 
-    let proc: Box<dyn ProcessControl> = match &settings.worker.kind {
+    let mut proc: Box<dyn ProcessControl> = match &settings.worker.kind {
         configuration::WorkerKind::Ruby(rb) => {
             let gemfile = settings.canonical_path(&rb.gemfile);
             let load = settings.canonical_path(&rb.load);
@@ -55,5 +56,7 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
         configuration::WorkerKind::Program(p) => Box::new(ForkExec::for_program(p)?),
     };
     let terminations = reaper::setup_child_exit_handler()?;
-    supervise(terminations, proc).await
+
+    proc.as_mut().initialize().await?;
+    Ok(supervise(terminations, proc).await)
 }
