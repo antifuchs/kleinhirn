@@ -2,44 +2,29 @@
 
 use crate::configuration::WorkerConfig;
 use machine::*;
-use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
-use std::{fmt::Debug, sync::Arc};
+use parking_lot::Mutex;
+use std::{collections::VecDeque, fmt::Debug, sync::Arc};
 
-#[cfg_attr(test, faux::create(self_type = "Arc"))]
-pub struct ProcessManager {}
-
-impl PartialEq for ProcessManager {
-    fn eq(&self, _other: &ProcessManager) -> bool {
-        true
-    }
+#[derive(Debug, PartialEq, Clone)]
+pub enum Todo {
+    KillProcess(Pid),
+    LaunchProcess,
 }
 
-impl Eq for ProcessManager {}
-
-impl Debug for ProcessManager {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Ok(())
-    }
-}
-
-#[cfg_attr(test, faux::methods(self_type = "Arc"))]
-impl ProcessManager {
-    pub fn kill_process(&self, pid: Pid, signal: Signal) -> Result<(), nix::Error> {
-        kill(pid, signal)
-    }
-
-    pub fn launch_new(&self, _n: usize) { // TODO: probably needs error handling
-
-        // also TODO: talk to preloader
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct State {
     pids: Vec<Pid>,
     config: WorkerConfig,
-    process_manager: Arc<ProcessManager>,
+    todo: Arc<Mutex<VecDeque<Todo>>>,
+}
+
+impl PartialEq for State {
+    fn eq(&self, other: &State) -> bool {
+        let todo1 = self.todo.lock();
+        let todo2 = other.todo.lock();
+        self.pids == other.pids && self.config == other.config && *todo1 == *todo2
+    }
 }
 
 impl State {
@@ -51,11 +36,23 @@ impl State {
         self.pids.retain(|pid| *pid == dead);
     }
 
-    fn kill_all_workers(&self) -> Result<(), nix::Error> {
+    fn kill_all_workers(&mut self) {
+        let mut todo = self.todo.lock();
+
+        (*todo).clear();
         for pid in self.pids.iter() {
-            self.process_manager.kill_process(*pid, Signal::SIGTERM)?;
+            (*todo).push_back(Todo::KillProcess(*pid));
         }
-        Ok(())
+    }
+
+    fn start_worker(&mut self) {
+        let mut todo = self.todo.lock();
+        (*todo).push_back(Todo::LaunchProcess);
+    }
+
+    pub fn next_todo(&self) -> Option<Todo> {
+        let mut todo = self.todo.lock();
+        (*todo).pop_front()
     }
 }
 
@@ -68,15 +65,19 @@ machine! {
         Overprovisioned { state: State },
         Faulted { state: State },
         Terminating { state: State },
-        Terminated {},
+        Terminated { state: State },
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct WorkerDeath(Pid);
+methods!(WorkerSet, [
+    Startup, Running, Underprovisioned, Overprovisioned, Faulted, Terminating, Terminated => get state: State
+]);
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct WorkerStarted(Pid);
+pub struct WorkerDeath(pub Pid);
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WorkerStarted(pub Pid);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Terminate();
@@ -103,8 +104,7 @@ impl Running {
     fn on_worker_death(self, d: WorkerDeath) -> Underprovisioned {
         let mut state = self.state;
         state.worker_died(d.0);
-
-        // TODO: start a new worker somehow
+        state.start_worker();
         Underprovisioned { state }
     }
 
@@ -115,8 +115,8 @@ impl Running {
     }
 
     fn on_terminate(self, _: Terminate) -> Terminating {
-        let state = self.state;
-        state.kill_all_workers().expect("TODO: handle error");
+        let mut state = self.state;
+        state.kill_all_workers();
         Terminating { state }
     }
 }
@@ -129,7 +129,7 @@ impl Startup {
         if state.pids.len() >= state.config.count {
             WorkerSet::running(state)
         } else {
-            state.process_manager.launch_new(1); // TODO: allow configuring
+            state.start_worker();
             WorkerSet::startup(state)
         }
     }
@@ -141,8 +141,8 @@ impl Startup {
     }
 
     fn on_terminate(self, _: Terminate) -> Terminating {
-        let state = self.state;
-        state.kill_all_workers().expect("TODO: handle kill error");
+        let mut state = self.state;
+        state.kill_all_workers();
         Terminating { state }
     }
 }
@@ -153,7 +153,7 @@ impl Underprovisioned {
         state.new_worker(s.0);
 
         if state.pids.len() >= state.config.count {
-            state.process_manager.launch_new(1); // TODO: allow configuring
+            state.start_worker();
             WorkerSet::running(state)
         } else {
             WorkerSet::underprovisioned(state)
@@ -163,15 +163,13 @@ impl Underprovisioned {
     fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
         let mut state = self.state;
         state.worker_died(d.0);
-        state.process_manager.launch_new(1);
-
-        // TODO: allow configuring how many simultaneous deaths make a faulted service.
+        state.start_worker();
         WorkerSet::faulted(state)
     }
 
     fn on_terminate(self, _: Terminate) -> Terminating {
-        let state = self.state;
-        state.kill_all_workers().expect("TODO: handle kill error");
+        let mut state = self.state;
+        state.kill_all_workers();
         Terminating { state }
     }
 }
@@ -184,9 +182,19 @@ impl Terminating {
         if !state.pids.is_empty() {
             WorkerSet::terminating(state)
         } else {
-            WorkerSet::terminated()
+            WorkerSet::terminated(state)
         }
     }
 }
 
-impl WorkerSet {}
+impl WorkerSet {
+    pub fn new(config: WorkerConfig) -> WorkerSet {
+        let mut state = State {
+            config,
+            todo: Arc::new(Mutex::new(Default::default())),
+            pids: Default::default(),
+        };
+        state.start_worker();
+        WorkerSet::Startup(Startup { state })
+    }
+}

@@ -5,13 +5,14 @@ use anyhow::{Context, Error, Result};
 use async_trait::async_trait;
 use closefds::close_fds_on_exec;
 use nix::unistd::Pid;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use slog_scope::info;
 use std::{
     os::unix::{io::AsRawFd, process::CommandExt},
     path::{Path, PathBuf},
     process::Command,
 };
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufStream};
 use tokio::net::UnixStream;
 
 /// Allows control over worker processes
@@ -56,9 +57,16 @@ pub enum PreloaderMessage {
     Ack { id: String },
 }
 
+#[derive(PartialEq, Debug, Serialize)]
+#[serde(tag = "op")]
+#[serde(rename_all = "snake_case")]
+enum PreloaderRequest {
+    Spawn { id: String },
+}
+
 #[derive(Debug)]
 pub struct Preloader {
-    control_channel: BufReader<UnixStream>,
+    control_channel: BufStream<UnixStream>,
     pid: u32,
 }
 
@@ -88,7 +96,7 @@ impl Preloader {
         debug!("running preloader"; "cmd" => format!("{:?}", cmd));
         let child = cmd.spawn().context("spawning kleinhirn_loader")?;
         let socket = UnixStream::from_std(ours).context("unable to setup UNIX stream")?;
-        let reader = BufReader::new(socket);
+        let reader = BufStream::new(socket);
         debug!("child running"; "pid" => format!("{:?}", child.id()));
         Ok(Preloader {
             control_channel: reader,
@@ -101,6 +109,15 @@ impl Preloader {
         self.control_channel.read_line(&mut line).await?;
         let msg: PreloaderMessage = serde_json::from_str(&line)?;
         Ok(msg)
+    }
+
+    async fn send_message(&mut self, msg: &PreloaderRequest) -> Result<()> {
+        let mut msg = serde_json::to_vec(msg)?;
+        info!("sending"; "msg" => String::from_utf8(msg.clone()).unwrap());
+        msg.push('\n' as u8);
+        self.control_channel.write_all(&msg).await?;
+        self.control_channel.flush().await?;
+        Ok(())
     }
 }
 
@@ -127,8 +144,33 @@ impl ProcessControl for Preloader {
         }
     }
 
-    async fn spawn_process(&mut self, _id: &str) -> Result<Pid> {
-        todo!("fill me out");
+    async fn spawn_process(&mut self, id: &str) -> Result<Pid> {
+        // TODO: this doesn't work for the interleaved case. Use the worker state machine.
+        //
+        self.send_message(&PreloaderRequest::Spawn { id: id.to_string() })
+            .await?;
+        let launched = self.next_message().await?;
+        info!("got launch message"; "msg" => format!("{:?}", launched));
+        match launched {
+            PreloaderMessage::Launched {
+                id: _launched_id,
+                pid,
+            } => {
+                let acked = self.next_message().await?;
+                match acked {
+                    PreloaderMessage::Ack { id: acked_id } => {
+                        info!("acked"; "id" => acked_id);
+                        return Ok(Pid::from_raw(pid));
+                    }
+                    _ => {
+                        todo!("unclear what happened!");
+                    }
+                }
+            }
+            _ => {
+                todo!("more unclear what happened!");
+            }
+        }
     }
 
     async fn until_ready(&mut self) -> Result<String> {

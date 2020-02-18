@@ -13,6 +13,7 @@ use slog::o;
 use slog_scope::info;
 use std::convert::Infallible;
 use tokio::select;
+use worker_set::{Todo, WorkerSet, WorkerStarted};
 
 mod control;
 mod preloader;
@@ -30,8 +31,32 @@ pub mod reaper;
     clippy::option_expect_used,
     clippy::result_expect_used
 )]
-async fn supervise(mut zombies: Zombies, _proc: Box<dyn ProcessControl>) -> Infallible {
+async fn supervise(
+    config: configuration::WorkerConfig,
+    mut zombies: Zombies,
+    mut proc: Box<dyn ProcessControl>,
+) -> Infallible {
+    let mut machine = WorkerSet::new(config);
     loop {
+        // Process things we need to do now:
+        match machine.state().and_then(|s| s.next_todo()) {
+            None => {}
+            Some(Todo::KillProcess(pid)) => {
+                // TODO
+                info!("Should kill"; "pid" => pid.as_raw());
+            }
+            Some(Todo::LaunchProcess) => {
+                info!("Need to launch a process");
+                match proc.spawn_process("foo").await {
+                    Ok(pid) => {
+                        info!("ack from process"; "pid" => pid.as_raw());
+                        machine = machine.on_worker_started(WorkerStarted(pid));
+                    }
+                    Err(e) => info!("failed to launch"; "error" => format!("{:?}", e)),
+                }
+            }
+        }
+        // Read events off the environment
         select! {
             res = zombies.reap().fuse() =>{
                 match res {
@@ -67,5 +92,5 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
     let terminations = reaper::setup_child_exit_handler()?;
 
     proc.as_mut().initialize().await?;
-    Ok(supervise(terminations, proc).await)
+    Ok(supervise(settings.worker, terminations, proc).await)
 }
