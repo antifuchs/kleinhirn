@@ -1,13 +1,13 @@
+use nix::fcntl::{fcntl, FcntlArg};
 use slog_scope::debug;
 
 use crate::configuration;
 use anyhow::{Context, Error, Result};
 use async_trait::async_trait;
-use closefds::close_fds_on_exec;
 use serde::{Deserialize, Serialize};
 use slog_scope::info;
 use std::{
-    os::unix::{io::AsRawFd, process::CommandExt},
+    os::unix::io::AsRawFd,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -78,7 +78,10 @@ impl Preloader {
     pub fn for_ruby(gemfile: &Path, load: &Path, start_expression: &str) -> Result<Preloader> {
         let (ours, theirs) = std::os::unix::net::UnixStream::pair()
             .context("Could not initialize preloader unix socket pair")?;
-        let theirs_str = theirs.as_raw_fd().to_string();
+        let their_fd = fcntl(theirs.as_raw_fd(), FcntlArg::F_DUPFD(theirs.as_raw_fd()))
+            .context("Could not clear CLOFD from the status pipe")?;
+
+        let theirs_str = their_fd.to_string();
         let mut cmd = Command::new("bundle");
         cmd.args(&["exec", "--gemfile"])
             .arg(gemfile.as_os_str())
@@ -93,10 +96,6 @@ impl Preloader {
                 "-r",
             ])
             .arg(load.as_os_str());
-
-        unsafe {
-            cmd.pre_exec(close_fds_on_exec(vec![0, 1, 2, theirs.as_raw_fd()])?);
-        }
         debug!("running preloader"; "cmd" => format!("{:?}", cmd));
         let child = cmd.spawn().context("spawning kleinhirn_loader")?;
         let socket = UnixStream::from_std(ours).context("unable to setup UNIX stream")?;
