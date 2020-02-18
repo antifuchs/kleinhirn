@@ -9,7 +9,11 @@ use tokio::{io::AsyncReadExt, net::UnixStream};
 /// asynchronously waking up & reaping all eligible children. The reaped children's PIDs are
 /// returned in a stream.
 pub fn setup_child_exit_handler() -> Result<Zombies> {
-    // TODO: use prctl to set up the subreaper reaper state
+    #[cfg(target_os = "linux")] //only linux supports the prctl we need
+    prctl::set_child_subreaper(true)
+        .map_err(|code| anyhow::anyhow!("Unable to set subreaper status. Status {:?}", code))?;
+    #[cfg(not(target_os = "linux"))]
+    anyhow::bail!("can't run under non-linux, sorry");
 
     let (read, write) = std::os::unix::net::UnixStream::pair()
         .context("Could not initialize signal handler socket pair")?;
