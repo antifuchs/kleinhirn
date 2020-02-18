@@ -7,9 +7,9 @@
 require 'kleinhirn_loader/worker'
 
 def kleinhirn_main
-  sleep 2
+  sleep 1
   KleinhirnLoader::Worker.new.done
-  sleep 3
+  sleep 6
 end
 
 if $PROGRAM_NAME == __FILE__

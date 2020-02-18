@@ -11,10 +11,10 @@ use nix::unistd::Pid;
 use preloader::{ForkExec, Preloader, PreloaderMessage, ProcessControl};
 use reaper::Zombies;
 use slog::o;
-use slog_scope::info;
+use slog_scope::{debug, info};
 use std::convert::Infallible;
 use tokio::select;
-use worker_set::{Todo, WorkerAcked, WorkerLaunched, WorkerRequested, WorkerSet};
+use worker_set::{Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested, WorkerSet};
 
 mod control;
 mod preloader;
@@ -63,11 +63,15 @@ async fn supervise(
         select! {
             res = zombies.reap().fuse() => {
                 match res {
-                    Ok(pid) => info!("reaped child"; "pid" => pid.as_raw()),
+                    Ok(pid) => {
+                        info!("reaped child"; "pid" => pid.as_raw());
+                        machine = machine.on_worker_death(WorkerDeath::new(pid))
+                    }
                     Err(e) => info!("failed to reap"; "error" => format!("{:?}", e))
                 }
             }
             msg = proc.next_message().fuse() => {
+                debug!("received message"; "msg" => format!("{:?}", msg));
                 use PreloaderMessage::*;
                 match msg {
                     Err(e) => info!("could not read preloader message"; "error" => format!("{:?}", e)),
@@ -83,6 +87,7 @@ async fn supervise(
                 }
             }
         };
+        debug!("machine is now"; "machine" => format!("{:?}", machine));
     }
 }
 

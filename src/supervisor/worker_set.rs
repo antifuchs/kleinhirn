@@ -76,6 +76,10 @@ impl Workers {
 pub struct State {
     workers: Workers,
     config: WorkerConfig,
+
+    #[deprecated(
+        note = "the state machine should compute this on its own - no need to launch more when we're in Running, for ex."
+    )]
     todo: Arc<Mutex<VecDeque<Todo>>>,
 }
 
@@ -107,6 +111,32 @@ impl State {
     pub fn next_todo(&self) -> Option<Todo> {
         let mut todo = self.todo.lock();
         (*todo).pop_front()
+    }
+
+    pub fn requested_workers(&self) -> usize {
+        let todo = self.todo.lock();
+        (*todo)
+            .iter()
+            .filter(|t| *t == &Todo::LaunchProcess)
+            .count()
+    }
+
+    fn handle_ack<T>(
+        mut self,
+        id: String,
+        self_state: fn(Self) -> T,
+        done_state: fn(Self) -> T,
+    ) -> T {
+        self.workers.acked(id);
+
+        if self.workers.len() >= self.config.count {
+            done_state(self)
+        } else {
+            if self.requested_workers() + self.workers.len() < self.config.count {
+                self.start_worker();
+            }
+            self_state(self)
+        }
     }
 }
 
@@ -204,9 +234,8 @@ impl Running {
     }
 
     fn on_worker_acked(self, s: WorkerAcked) -> Running {
-        let mut state = self.state;
-        state.workers.acked(s.id);
-        Running { state }
+        let state = self.state;
+        state.handle_ack(s.id, |state| Running { state }, |state| Running { state })
     }
 
     fn on_terminate(self, _: Terminate) -> Terminating {
@@ -232,15 +261,8 @@ impl Startup {
     }
 
     fn on_worker_acked(self, s: WorkerAcked) -> WorkerSet {
-        let mut state = self.state;
-        state.workers.acked(s.id);
-
-        if state.workers.len() >= state.config.count {
-            WorkerSet::running(state)
-        } else {
-            state.start_worker();
-            WorkerSet::startup(state)
-        }
+        let state = self.state;
+        state.handle_ack(s.id, WorkerSet::startup, WorkerSet::running)
     }
 
     fn on_worker_death(self, d: WorkerDeath) -> Faulted {
@@ -272,22 +294,16 @@ impl Underprovisioned {
     }
 
     fn on_worker_acked(self, s: WorkerAcked) -> WorkerSet {
-        let mut state = self.state;
-        state.workers.acked(s.id);
-
-        if state.workers.len() >= state.config.count {
-            state.start_worker();
-            WorkerSet::running(state)
-        } else {
-            WorkerSet::underprovisioned(state)
-        }
+        let state = self.state;
+        state.handle_ack(s.id, WorkerSet::underprovisioned, WorkerSet::running)
     }
 
     fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
         let mut state = self.state;
         state.workers.delete_by_pid(d.0);
         state.start_worker();
-        WorkerSet::faulted(state)
+        // TODO: treat this better with a circuit breaker (figure out what we want in the first place?)
+        WorkerSet::underprovisioned(state)
     }
 
     fn on_terminate(self, _: Terminate) -> Terminating {
