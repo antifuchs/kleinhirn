@@ -47,6 +47,7 @@ tokio = {version = "0.2.11", features = ["io-util", "uds", "time", "rt-core", "m
 machine = "0.3.0"
 closefds = "0.1.0"
 async-trait = "0.1.24"
+uuid = {version = "0.8.1", features = ["v4"] }
 
 [dev-dependencies]
 rusty-fork = "0.2.2"

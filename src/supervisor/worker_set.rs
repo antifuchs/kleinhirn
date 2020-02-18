@@ -1,10 +1,13 @@
-#![allow(dead_code)] // TODO: use this.
-
 use crate::configuration::WorkerConfig;
 use machine::*;
 use nix::unistd::Pid;
 use parking_lot::Mutex;
-use std::{collections::VecDeque, fmt::Debug, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt::Debug,
+    sync::Arc,
+    time::Instant,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Todo {
@@ -12,9 +15,66 @@ pub enum Todo {
     LaunchProcess,
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+struct Worker {
+    id: String,
+    pid: Option<Pid>,
+    requested: Option<Instant>,
+    launched: Option<Instant>,
+    acked: Option<Instant>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+struct Workers {
+    by_pid: HashMap<Pid, String>,
+    by_id: HashMap<String, Worker>,
+}
+
+impl Workers {
+    fn register_worker(&mut self, id: String) {
+        let w = Worker {
+            id: id.to_string(),
+            requested: Some(Instant::now()),
+            ..Default::default()
+        };
+        self.by_id.insert(id, w);
+    }
+
+    fn launched(&mut self, id: String, pid: Pid) {
+        self.by_id.entry(id).and_modify(|w| {
+            w.launched = Some(Instant::now());
+            w.pid = Some(pid);
+        });
+    }
+
+    fn acked(&mut self, id: String) {
+        self.by_id.entry(id).and_modify(|w| {
+            w.acked = Some(Instant::now());
+        });
+    }
+
+    fn delete_by_pid(&mut self, pid: Pid) {
+        if let Some(id) = self.by_pid.get(&pid) {
+            self.by_id.remove(id);
+        }
+    }
+
+    fn all<'a>(&'a self) -> impl Iterator<Item = &'a Worker> {
+        self.by_id.values()
+    }
+
+    fn len(&self) -> usize {
+        self.by_id.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.by_id.is_empty()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct State {
-    pids: Vec<Pid>,
+    workers: Workers,
     config: WorkerConfig,
     todo: Arc<Mutex<VecDeque<Todo>>>,
 }
@@ -23,25 +83,19 @@ impl PartialEq for State {
     fn eq(&self, other: &State) -> bool {
         let todo1 = self.todo.lock();
         let todo2 = other.todo.lock();
-        self.pids == other.pids && self.config == other.config && *todo1 == *todo2
+        self.workers == other.workers && self.config == other.config && *todo1 == *todo2
     }
 }
 
 impl State {
-    fn new_worker(&mut self, pid: Pid) {
-        self.pids.push(pid);
-    }
-
-    fn worker_died(&mut self, dead: Pid) {
-        self.pids.retain(|pid| *pid == dead);
-    }
-
     fn kill_all_workers(&mut self) {
         let mut todo = self.todo.lock();
 
         (*todo).clear();
-        for pid in self.pids.iter() {
-            (*todo).push_back(Todo::KillProcess(*pid));
+        for worker in self.workers.all() {
+            if let Some(pid) = worker.pid {
+                (*todo).push_back(Todo::KillProcess(pid));
+            }
         }
     }
 
@@ -76,23 +130,64 @@ methods!(WorkerSet, [
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorkerDeath(pub Pid);
 
+impl WorkerDeath {
+    pub fn new(pid: Pid) -> Self {
+        WorkerDeath(pid)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
-pub struct WorkerStarted(pub Pid);
+pub struct WorkerRequested {
+    id: String,
+}
+
+impl WorkerRequested {
+    pub fn new(id: String) -> Self {
+        Self { id }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WorkerLaunched {
+    id: String,
+    pid: Pid,
+}
+
+impl WorkerLaunched {
+    pub fn new(id: String, pid: Pid) -> Self {
+        Self { id, pid }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WorkerAcked {
+    id: String,
+}
+
+impl WorkerAcked {
+    pub fn new(id: String) -> Self {
+        Self { id }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Terminate();
 
 transitions!(WorkerSet,
   [
-    (Startup, WorkerStarted) => [Running, Startup],
+    (Startup, WorkerRequested) => Startup,
+    (Startup, WorkerLaunched) => Startup,
+    (Startup, WorkerAcked) => [Running, Startup],
     (Startup, WorkerDeath) => Faulted,
     (Startup, Terminate) => Terminating,
 
     (Running, WorkerDeath) => Underprovisioned,
-    (Running, WorkerStarted) => Running,
+    (Running, WorkerAcked) => Running,
     (Running, Terminate) => Terminating,
 
-    (Underprovisioned, WorkerStarted) => [Running, Underprovisioned],
+    (Underprovisioned, WorkerRequested) => Underprovisioned,
+    (Underprovisioned, WorkerLaunched) => Underprovisioned,
+    (Underprovisioned, WorkerAcked) => [Running, Underprovisioned],
     (Underprovisioned, WorkerDeath) => [Underprovisioned, Faulted],
     (Underprovisioned, Terminate) => Terminating,
 
@@ -103,14 +198,14 @@ transitions!(WorkerSet,
 impl Running {
     fn on_worker_death(self, d: WorkerDeath) -> Underprovisioned {
         let mut state = self.state;
-        state.worker_died(d.0);
+        state.workers.delete_by_pid(d.0);
         state.start_worker();
         Underprovisioned { state }
     }
 
-    fn on_worker_started(self, s: WorkerStarted) -> Running {
+    fn on_worker_acked(self, s: WorkerAcked) -> Running {
         let mut state = self.state;
-        state.new_worker(s.0);
+        state.workers.acked(s.id);
         Running { state }
     }
 
@@ -122,11 +217,25 @@ impl Running {
 }
 
 impl Startup {
-    fn on_worker_started(self, s: WorkerStarted) -> WorkerSet {
+    fn on_worker_requested(self, r: WorkerRequested) -> Startup {
         let mut state = self.state;
-        state.new_worker(s.0);
+        state.workers.register_worker(r.id);
 
-        if state.pids.len() >= state.config.count {
+        Startup { state }
+    }
+
+    fn on_worker_launched(self, r: WorkerLaunched) -> Startup {
+        let mut state = self.state;
+        state.workers.launched(r.id, r.pid);
+
+        Startup { state }
+    }
+
+    fn on_worker_acked(self, s: WorkerAcked) -> WorkerSet {
+        let mut state = self.state;
+        state.workers.acked(s.id);
+
+        if state.workers.len() >= state.config.count {
             WorkerSet::running(state)
         } else {
             state.start_worker();
@@ -136,7 +245,7 @@ impl Startup {
 
     fn on_worker_death(self, d: WorkerDeath) -> Faulted {
         let mut state = self.state;
-        state.worker_died(d.0);
+        state.workers.delete_by_pid(d.0);
         Faulted { state }
     }
 
@@ -148,11 +257,25 @@ impl Startup {
 }
 
 impl Underprovisioned {
-    fn on_worker_started(self, s: WorkerStarted) -> WorkerSet {
+    fn on_worker_requested(self, r: WorkerRequested) -> Underprovisioned {
         let mut state = self.state;
-        state.new_worker(s.0);
+        state.workers.register_worker(r.id);
 
-        if state.pids.len() >= state.config.count {
+        Underprovisioned { state }
+    }
+
+    fn on_worker_launched(self, r: WorkerLaunched) -> Underprovisioned {
+        let mut state = self.state;
+        state.workers.launched(r.id, r.pid);
+
+        Underprovisioned { state }
+    }
+
+    fn on_worker_acked(self, s: WorkerAcked) -> WorkerSet {
+        let mut state = self.state;
+        state.workers.acked(s.id);
+
+        if state.workers.len() >= state.config.count {
             state.start_worker();
             WorkerSet::running(state)
         } else {
@@ -162,7 +285,7 @@ impl Underprovisioned {
 
     fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
         let mut state = self.state;
-        state.worker_died(d.0);
+        state.workers.delete_by_pid(d.0);
         state.start_worker();
         WorkerSet::faulted(state)
     }
@@ -177,9 +300,9 @@ impl Underprovisioned {
 impl Terminating {
     fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
         let mut state = self.state;
-        state.worker_died(d.0);
+        state.workers.delete_by_pid(d.0);
 
-        if !state.pids.is_empty() {
+        if !state.workers.is_empty() {
             WorkerSet::terminating(state)
         } else {
             WorkerSet::terminated(state)
@@ -192,7 +315,7 @@ impl WorkerSet {
         let mut state = State {
             config,
             todo: Arc::new(Mutex::new(Default::default())),
-            pids: Default::default(),
+            workers: Default::default(),
         };
         state.start_worker();
         WorkerSet::Startup(Startup { state })

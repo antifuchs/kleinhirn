@@ -7,13 +7,14 @@ use anyhow::Result;
 
 use crate::configuration;
 use futures::future::FutureExt;
-use preloader::{ForkExec, Preloader, ProcessControl};
+use nix::unistd::Pid;
+use preloader::{ForkExec, Preloader, PreloaderMessage, ProcessControl};
 use reaper::Zombies;
 use slog::o;
 use slog_scope::info;
 use std::convert::Infallible;
 use tokio::select;
-use worker_set::{Todo, WorkerSet, WorkerStarted};
+use worker_set::{Todo, WorkerAcked, WorkerLaunched, WorkerRequested, WorkerSet};
 
 mod control;
 mod preloader;
@@ -34,7 +35,8 @@ pub mod reaper;
 async fn supervise(
     config: configuration::WorkerConfig,
     mut zombies: Zombies,
-    mut proc: Box<dyn ProcessControl>,
+    // TODO: uh, I need to make this generic enough for the fork/exec method.
+    mut proc: Box<dyn ProcessControl<Message = PreloaderMessage>>,
 ) -> Infallible {
     let mut machine = WorkerSet::new(config);
     loop {
@@ -47,21 +49,37 @@ async fn supervise(
             }
             Some(Todo::LaunchProcess) => {
                 info!("Need to launch a process");
-                match proc.spawn_process("foo").await {
-                    Ok(pid) => {
-                        info!("ack from process"; "pid" => pid.as_raw());
-                        machine = machine.on_worker_started(WorkerStarted(pid));
+                match proc.spawn_process().await {
+                    Ok(id) => {
+                        info!("requested launch"; "id" => &id);
+                        machine = machine.on_worker_requested(WorkerRequested::new(id));
                     }
                     Err(e) => info!("failed to launch"; "error" => format!("{:?}", e)),
                 }
             }
         }
+
         // Read events off the environment
         select! {
-            res = zombies.reap().fuse() =>{
+            res = zombies.reap().fuse() => {
                 match res {
                     Ok(pid) => info!("reaped child"; "pid" => pid.as_raw()),
                     Err(e) => info!("failed to reap"; "error" => format!("{:?}", e))
+                }
+            }
+            msg = proc.next_message().fuse() => {
+                use PreloaderMessage::*;
+                match msg {
+                    Err(e) => info!("could not read preloader message"; "error" => format!("{:?}", e)),
+                    Ok(Launched{id, pid}) => {
+                        machine = machine.on_worker_launched(WorkerLaunched::new(id, Pid::from_raw(pid)));
+                    }
+                    Ok(Ack{id}) => {
+                        machine = machine.on_worker_acked(WorkerAcked::new(id));
+                    }
+                    e @ _ => {
+                        info!("Received unexpected message"; "msg" => format!("{:?}", e));
+                    }
                 }
             }
         };
@@ -76,7 +94,8 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
         slog_scope::logger().new(o!("service" => settings.supervisor.name.to_string())),
     );
 
-    let mut proc: Box<dyn ProcessControl> = match &settings.worker.kind {
+    let mut proc: Box<dyn ProcessControl<Message = PreloaderMessage>> = match &settings.worker.kind
+    {
         configuration::WorkerKind::Ruby(rb) => {
             let gemfile = settings.canonical_path(&rb.gemfile);
             let load = settings.canonical_path(&rb.load);
@@ -87,7 +106,7 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
             );
             Box::new(Preloader::for_ruby(&gemfile, &load, &rb.start_expression)?)
         }
-        configuration::WorkerKind::Program(p) => Box::new(ForkExec::for_program(p)?),
+        configuration::WorkerKind::Program(_p) => todo!("doens't handle fork/exec atm"),
     };
     let terminations = reaper::setup_child_exit_handler()?;
 
