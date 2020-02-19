@@ -4,6 +4,7 @@ use slog::{o, Drain, Logger};
 use slog_scope::info;
 use std::{env::current_dir, path::PathBuf};
 use structopt::StructOpt;
+use supervisor::reaper;
 use tokio::runtime::Runtime;
 
 fn create_logger() -> Logger {
@@ -24,6 +25,10 @@ struct Opt {
 }
 
 fn main() -> Result<()> {
+    // do the platform-dependent setup thing first:
+    // TODO figure out if we *really* can't prevent this binary from getting built on non-linux platforms.
+    reaper::setup_child_subreaper()?;
+
     let opt = Opt::from_args();
     let mut rt = Runtime::new()?;
 
