@@ -18,9 +18,9 @@ use worker_set::{Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested
 
 mod control;
 mod preloader;
-mod worker_set;
 
 pub mod reaper;
+pub mod worker_set;
 
 // let's try (at least on this function call level) to ensure all
 // problematic conditions are handled in a way that doesn't leave this
