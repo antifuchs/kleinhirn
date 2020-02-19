@@ -18,7 +18,6 @@ use worker_set::{Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested
 
 mod control;
 mod preloader;
-mod worker;
 mod worker_set;
 
 pub mod reaper;
@@ -41,7 +40,7 @@ async fn supervise(
     let mut machine = WorkerSet::new(config);
     loop {
         // Process things we need to do now:
-        match machine.state().and_then(|s| s.next_todo()) {
+        match machine.required_action().and_then(|todo| todo) {
             None => {}
             Some(Todo::KillProcess(pid)) => {
                 // TODO

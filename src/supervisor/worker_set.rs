@@ -1,13 +1,7 @@
 use crate::configuration::WorkerConfig;
 use machine::*;
 use nix::unistd::Pid;
-use parking_lot::Mutex;
-use std::{
-    collections::{HashMap, VecDeque},
-    fmt::Debug,
-    sync::Arc,
-    time::Instant,
-};
+use std::{collections::HashMap, fmt, time::Instant};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Todo {
@@ -22,6 +16,7 @@ struct Worker {
     requested: Option<Instant>,
     launched: Option<Instant>,
     acked: Option<Instant>,
+    killed: Option<Instant>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -41,10 +36,11 @@ impl Workers {
     }
 
     fn launched(&mut self, id: String, pid: Pid) {
-        self.by_id.entry(id).and_modify(|w| {
+        self.by_id.entry(id.to_string()).and_modify(|w| {
             w.launched = Some(Instant::now());
             w.pid = Some(pid);
         });
+        self.by_pid.insert(pid, id);
     }
 
     fn acked(&mut self, id: String) {
@@ -62,65 +58,15 @@ impl Workers {
     fn all<'a>(&'a self) -> impl Iterator<Item = &'a Worker> {
         self.by_id.values()
     }
-
-    fn len(&self) -> usize {
-        self.by_id.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.by_id.is_empty()
-    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct State {
     workers: Workers,
     config: WorkerConfig,
-
-    #[deprecated(
-        note = "the state machine should compute this on its own - no need to launch more when we're in Running, for ex."
-    )]
-    todo: Arc<Mutex<VecDeque<Todo>>>,
-}
-
-impl PartialEq for State {
-    fn eq(&self, other: &State) -> bool {
-        let todo1 = self.todo.lock();
-        let todo2 = other.todo.lock();
-        self.workers == other.workers && self.config == other.config && *todo1 == *todo2
-    }
 }
 
 impl State {
-    fn kill_all_workers(&mut self) {
-        let mut todo = self.todo.lock();
-
-        (*todo).clear();
-        for worker in self.workers.all() {
-            if let Some(pid) = worker.pid {
-                (*todo).push_back(Todo::KillProcess(pid));
-            }
-        }
-    }
-
-    fn start_worker(&mut self) {
-        let mut todo = self.todo.lock();
-        (*todo).push_back(Todo::LaunchProcess);
-    }
-
-    pub fn next_todo(&self) -> Option<Todo> {
-        let mut todo = self.todo.lock();
-        (*todo).pop_front()
-    }
-
-    pub fn requested_workers(&self) -> usize {
-        let todo = self.todo.lock();
-        (*todo)
-            .iter()
-            .filter(|t| *t == &Todo::LaunchProcess)
-            .count()
-    }
-
     fn handle_ack<T>(
         mut self,
         id: String,
@@ -129,32 +75,72 @@ impl State {
     ) -> T {
         self.workers.acked(id);
 
-        if self.workers.len() >= self.config.count {
+        if self.workers.all().filter(|w| w.acked.is_some()).count() >= self.config.count {
             done_state(self)
         } else {
-            if self.requested_workers() + self.workers.len() < self.config.count {
-                self.start_worker();
-            }
             self_state(self)
         }
     }
 }
 
 machine! {
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, PartialEq)]
     pub enum WorkerSet {
         Startup { state: State },
         Running { state: State },
         Underprovisioned { state: State },
-        Overprovisioned { state: State },
         Faulted { state: State },
-        Terminating { state: State },
-        Terminated { state: State },
+    }
+}
+
+impl fmt::Debug for WorkerSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "WorkerSet::")?;
+        let state = match self {
+            WorkerSet::Startup(Startup { state }) => {
+                write!(f, "Startup")?;
+                state
+            }
+            WorkerSet::Running(Running { state }) => {
+                write!(f, "Running")?;
+                state
+            }
+            WorkerSet::Underprovisioned(Underprovisioned { state }) => {
+                write!(f, "Underprovisioned")?;
+                state
+            }
+            WorkerSet::Faulted(Faulted { state }) => {
+                write!(f, "Faulted")?;
+                state
+            }
+            WorkerSet::Error => {
+                write!(f, "Error")?;
+                return Ok(());
+            }
+        };
+        write!(
+            f,
+            "(acked:{}, launched:{}, requested:{})/{}",
+            state.workers.all().filter(|w| w.acked.is_some()).count(),
+            state
+                .workers
+                .all()
+                .filter(|w| w.acked.is_none() && w.launched.is_some())
+                .count(),
+            state
+                .workers
+                .all()
+                .filter(|w| w.acked.is_none() && w.launched.is_none() && w.requested.is_some())
+                .count(),
+            state.config.count,
+        )?;
+        Ok(())
     }
 }
 
 methods!(WorkerSet, [
-    Startup, Running, Underprovisioned, Overprovisioned, Faulted, Terminating, Terminated => get state: State
+    // TODO: Faulted?
+    Startup, Underprovisioned => fn required_action(&self) -> Option<Todo>
 ]);
 
 #[derive(Clone, Debug, PartialEq)]
@@ -209,19 +195,14 @@ transitions!(WorkerSet,
     (Startup, WorkerLaunched) => Startup,
     (Startup, WorkerAcked) => [Running, Startup],
     (Startup, WorkerDeath) => Faulted,
-    (Startup, Terminate) => Terminating,
 
     (Running, WorkerDeath) => Underprovisioned,
     (Running, WorkerAcked) => Running,
-    (Running, Terminate) => Terminating,
 
     (Underprovisioned, WorkerRequested) => Underprovisioned,
     (Underprovisioned, WorkerLaunched) => Underprovisioned,
     (Underprovisioned, WorkerAcked) => [Running, Underprovisioned],
-    (Underprovisioned, WorkerDeath) => [Underprovisioned, Faulted],
-    (Underprovisioned, Terminate) => Terminating,
-
-    (Terminating, WorkerDeath) => [Terminating, Terminated]
+    (Underprovisioned, WorkerDeath) => [Underprovisioned, Faulted]
   ]
 );
 
@@ -229,19 +210,12 @@ impl Running {
     fn on_worker_death(self, d: WorkerDeath) -> Underprovisioned {
         let mut state = self.state;
         state.workers.delete_by_pid(d.0);
-        state.start_worker();
         Underprovisioned { state }
     }
 
     fn on_worker_acked(self, s: WorkerAcked) -> Running {
         let state = self.state;
         state.handle_ack(s.id, |state| Running { state }, |state| Running { state })
-    }
-
-    fn on_terminate(self, _: Terminate) -> Terminating {
-        let mut state = self.state;
-        state.kill_all_workers();
-        Terminating { state }
     }
 }
 
@@ -271,10 +245,19 @@ impl Startup {
         Faulted { state }
     }
 
-    fn on_terminate(self, _: Terminate) -> Terminating {
-        let mut state = self.state;
-        state.kill_all_workers();
-        Terminating { state }
+    fn required_action(&self) -> Option<Todo> {
+        if self
+            .state
+            .workers
+            .all()
+            .filter(|w| w.killed.is_none())
+            .count()
+            < self.state.config.count
+        {
+            Some(Todo::LaunchProcess)
+        } else {
+            None
+        }
     }
 }
 
@@ -301,39 +284,32 @@ impl Underprovisioned {
     fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
         let mut state = self.state;
         state.workers.delete_by_pid(d.0);
-        state.start_worker();
         // TODO: treat this better with a circuit breaker (figure out what we want in the first place?)
         WorkerSet::underprovisioned(state)
     }
 
-    fn on_terminate(self, _: Terminate) -> Terminating {
-        let mut state = self.state;
-        state.kill_all_workers();
-        Terminating { state }
-    }
-}
-
-impl Terminating {
-    fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
-        let mut state = self.state;
-        state.workers.delete_by_pid(d.0);
-
-        if !state.workers.is_empty() {
-            WorkerSet::terminating(state)
+    fn required_action(&self) -> Option<Todo> {
+        if self
+            .state
+            .workers
+            .all()
+            .filter(|w| w.killed.is_none())
+            .count()
+            < self.state.config.count
+        {
+            Some(Todo::LaunchProcess)
         } else {
-            WorkerSet::terminated(state)
+            None
         }
     }
 }
 
 impl WorkerSet {
     pub fn new(config: WorkerConfig) -> WorkerSet {
-        let mut state = State {
+        let state = State {
             config,
-            todo: Arc::new(Mutex::new(Default::default())),
             workers: Default::default(),
         };
-        state.start_worker();
         WorkerSet::Startup(Startup { state })
     }
 }
