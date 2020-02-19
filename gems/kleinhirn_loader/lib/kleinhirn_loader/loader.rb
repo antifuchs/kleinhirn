@@ -45,6 +45,7 @@ module KleinhirnLoader
     def repl
       process_name = "#{@name}/#{@version} ::KleinhirnLoader::Loader"
       Process.setproctitle(process_name)
+      Process.setpgrp
 
       state_update(KleinhirnLoader::Replies::Ready.new)
       loop do
@@ -99,10 +100,32 @@ module KleinhirnLoader
     end
     def setup_child_environment(child_id)
       Dir.chdir('/')
+      reseed_random
+
       KleinhirnLoader::Env::WorkerID.env = child_id
       KleinhirnLoader::Env::Name.env = @name
       KleinhirnLoader::Env::Version.env = @version
       KleinhirnLoader::Env::StatusFD.env = @status_io.fileno.to_s
+    end
+
+    # Updates the random seeds in ruby's various RNGs. This comes from
+    # Einhorn, which has a good explanation in
+    # https://github.com/stripe/einhorn/blob/8d90062ede64025e219949c6c63f061540d99f80/lib/einhorn/command.rb#L367-L395
+    sig { void }
+    def reseed_random
+      # reseed Kernel#rand
+      srand
+
+      # reseed OpenSSL::Random if it's loaded
+      if defined?(OpenSSL::Random)
+        if (seed = defined?(Random))
+          Random.new_seed
+        else
+          # Ruby 1.8
+          seed = rand
+        end
+        OpenSSL::Random.seed(seed.to_s)
+      end
     end
 
     # Double-forks one pre-loaded worker process. The real PID is
