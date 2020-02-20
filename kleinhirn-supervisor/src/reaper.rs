@@ -5,21 +5,6 @@ use nix::unistd::Pid;
 use slog_scope::debug;
 use tokio::{io::AsyncReadExt, net::UnixStream};
 
-/// Makes the current process be the "child sub-reaper", meaning it
-/// gets orphaned child processes reparented to itself.
-///
-/// This is what allows kleinhirn to monitor processes that aren't its
-/// own direct descendants, and is only supported on linux.
-
-pub fn setup_child_subreaper() -> Result<()> {
-    #[cfg(target_os = "linux")] //only linux supports the prctl we need
-    prctl::set_child_subreaper(true)
-        .map_err(|code| anyhow::anyhow!("Unable to set subreaper status. Status {:?}", code))?;
-    #[cfg(not(target_os = "linux"))] //only linux supports the prctl we need
-    panic!("Only linux can set this process up as the child subreaper, other platforms are not supported.");
-    Ok(())
-}
-
 /// Sets the current process as the "child subreaper", and sets up a SIGCHLD handler for
 /// asynchronously waking up & reaping all eligible children. The reaped children's PIDs are
 /// returned in a stream.

@@ -1,10 +1,15 @@
+#[cfg(not(target_os = "linux"))]
+compile_error!(
+    "kleinhirn needs the prctl/PR_SET_CHILD_SUBREAPER syscall, which is only available on linux."
+);
+
 use anyhow::{Context, Result};
-use kleinhirn::*;
+use kleinhirn_supervisor::*;
+use prctl;
 use slog::{o, Drain, Logger};
 use slog_scope::info;
 use std::{env::current_dir, path::PathBuf};
 use structopt::StructOpt;
-use supervisor::reaper;
 use tokio::runtime::Runtime;
 
 fn create_logger() -> Logger {
@@ -25,10 +30,6 @@ struct Opt {
 }
 
 fn main() -> Result<()> {
-    // do the platform-dependent setup thing first:
-    // TODO figure out if we *really* can't prevent this binary from getting built on non-linux platforms.
-    reaper::setup_child_subreaper()?;
-
     let opt = Opt::from_args();
     let mut rt = Runtime::new()?;
 
@@ -47,8 +48,10 @@ fn main() -> Result<()> {
     let cwd = current_dir()?;
     settings.base_dir = config_file.parent().map(|p| p.to_owned()).unwrap_or(cwd);
     info!("startup");
+    prctl::set_child_subreaper(true)
+        .map_err(|code| anyhow::anyhow!("Unable to set subreaper status. Status {:?}", code))?;
     rt.block_on(async {
-        supervisor::run(settings).await?;
+        kleinhirn_supervisor::run(settings).await?;
 
         Ok(())
     })

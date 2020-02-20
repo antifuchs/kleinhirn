@@ -5,7 +5,6 @@
 
 use anyhow::Result;
 
-use crate::configuration;
 use futures::future::FutureExt;
 use nix::unistd::Pid;
 use preloader::{ForkExec, Preloader, PreloaderMessage, ProcessControl};
@@ -16,9 +15,9 @@ use std::convert::Infallible;
 use tokio::select;
 use worker_set::{Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested, WorkerSet};
 
-mod control;
 mod preloader;
 
+pub mod configuration;
 pub mod reaper;
 pub mod worker_set;
 

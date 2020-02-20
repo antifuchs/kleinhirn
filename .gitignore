@@ -1,2 +1,6 @@
-/target
 **/*.rs.bk
+/kleinhirn-supervisor/target/
+/kleinhirn-supervisor/Cargo.lock
+/kleinhirn/target
+/xtask/target
+/target

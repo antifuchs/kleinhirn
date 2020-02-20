@@ -1,5 +1,5 @@
 use anyhow::Result;
-use kleinhirn::supervisor::reaper::*;
+use kleinhirn_supervisor::reaper::*;
 use nix::unistd::Pid;
 use rusty_fork::*;
 use slog_scope::info;
