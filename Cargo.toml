@@ -3,3 +3,6 @@ members = [
   "kleinhirn-supervisor",
   "kleinhirn",
 ]
+exclude = [
+  "xtask",
+]
