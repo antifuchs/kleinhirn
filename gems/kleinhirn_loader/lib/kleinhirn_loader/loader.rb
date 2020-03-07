@@ -37,6 +37,7 @@ module KleinhirnLoader
 
       state_update(KleinhirnLoader::Replies::Loading.new(entry_point))
       load(entry_point)
+      force_move_to_oldgen
     end
 
     # Runs the command loop for the kleinhirn worker. The command loop
@@ -126,6 +127,20 @@ module KleinhirnLoader
         end
         OpenSSL::Random.seed(seed.to_s)
       end
+    end
+
+    # Make the GC more copy-on-write friendly by forcibly incrementing
+    # the generation counter on all objects to its maximum
+    # value. Learn more at: https://github.com/ko1/nakayoshi_fork
+    # This comes from Einhorn, see the explanation in https://github.com/stripe/einhorn/blob/d1b79101eb9b111a2c2b1c7676f0310f54ab08de/lib/einhorn.rb#L258
+    sig { void }
+    def force_move_to_oldgen
+      GC.start
+      3.times do
+        GC.start(full_mark: false)
+      end
+
+      GC.compact if GC.respond_to?(:compact)
     end
 
     # Double-forks one pre-loaded worker process. The real PID is
