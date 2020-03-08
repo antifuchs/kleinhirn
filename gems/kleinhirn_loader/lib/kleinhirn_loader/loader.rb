@@ -140,7 +140,7 @@ module KleinhirnLoader
         GC.start(full_mark: false)
       end
 
-      GC.compact if GC.respond_to?(:compact)
+      T.unsafe(GC).compact if GC.respond_to?(:compact)
     end
 
     # Double-forks one pre-loaded worker process. The real PID is
