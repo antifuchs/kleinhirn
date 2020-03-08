@@ -43,7 +43,7 @@ impl Zombies {
                 Err(e) => {return Err(e.into());}
 
                 // Anything else is a status change we don't care about. On to the next one:
-                e @ _ => {
+                e => {
                     debug!("weird process change detected that we'll ignore"; "change" => ?e);
                 }
             }

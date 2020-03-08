@@ -488,7 +488,6 @@ dependencies = [
  "machine",
  "matches",
  "nix 0.16.1",
- "once_cell",
  "parking_lot",
  "prctl",
  "rusty-fork",
@@ -498,7 +497,6 @@ dependencies = [
  "slog",
  "slog-scope",
  "slog-term",
- "string-interner",
  "tokio",
  "uuid",
 ]
@@ -709,12 +707,6 @@ checksum = "c62be47e61d1842b9170f0fdeec8eba98e60e90e5446449a0545e5152acd7096"
 dependencies = [
  "autocfg 1.0.0",
 ]
-
-[[package]]
-name = "once_cell"
-version = "1.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1c601810575c99596d4afc46f78a678c80105117c379eb3650cf99b8a21ce5b"
 
 [[package]]
 name = "parking_lot"
@@ -1143,15 +1135,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f3eb36b47e512f8f1c9e3d10c2c1965bc992bd9cdb024fa581e2194501c83d3"
 
 [[package]]
-name = "string-interner"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd710eadff449a1531351b0e43eb81ea404336fa2f56c777427ab0e32a4cf183"
-dependencies = [
- "serde 1.0.104",
-]
-
-[[package]]
 name = "strsim"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1280,6 +1263,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fdd17989496f49cdc57978c96f0c9fe5e4a58a8bddc6813c449a4624f6a030b"
 dependencies = [
  "bytes",
+ "fnv",
  "lazy_static",
  "libc",
  "memchr",

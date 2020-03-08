@@ -55,7 +55,7 @@ impl Workers {
         }
     }
 
-    fn all<'a>(&'a self) -> impl Iterator<Item = &'a Worker> {
+    fn all(&self) -> impl Iterator<Item = &Worker> {
         self.by_id.values()
     }
 }
@@ -85,6 +85,8 @@ impl State {
 
 machine! {
     #[derive(Clone, PartialEq)]
+    // not sure why clippy thinks these are different sizes; they're identical.
+    #[allow(clippy::large_enum_variant)]
     pub enum WorkerSet {
         Startup { state: State },
         Running { state: State },
