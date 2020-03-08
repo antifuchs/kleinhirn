@@ -1,19 +1,27 @@
 use nix::fcntl::{fcntl, FcntlArg};
+use slog;
 use slog_scope::debug;
 
+use self::machine::PreloaderState;
 use crate::configuration;
-use anyhow::{Context, Error, Result};
+use anyhow::{bail, Context, Error, Result};
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use slog_scope::info;
 use std::{
+    collections::HashMap,
     os::unix::io::AsRawFd,
     path::{Path, PathBuf},
     process::Command,
 };
+use string_interner::DefaultStringInterner;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufStream};
 use tokio::net::UnixStream;
 use uuid::Uuid;
+
+mod machine;
 
 /// Allows control over worker processes
 #[async_trait]
@@ -32,7 +40,7 @@ pub trait ProcessControl {
     async fn next_message(&mut self) -> Result<Self::Message>;
 }
 
-#[derive(PartialEq, Debug, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Deserialize)]
 #[serde(tag = "action")]
 #[serde(rename_all = "snake_case")]
 pub enum PreloaderMessage {
@@ -59,6 +67,30 @@ pub enum PreloaderMessage {
 
     /// A worker process has finished initializing and is now running.
     Ack { id: String },
+
+    /// Some message that the preloader or worker wants us to log.
+    Log {
+        level: LogLevel,
+        msg: String,
+        #[serde(flatten)]
+        kv: HashMap<String, String>,
+    },
+}
+
+#[derive(PartialEq, Debug, Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum LogLevel {
+    Debug,
+    Info,
+}
+
+impl Into<slog::Level> for &LogLevel {
+    fn into(self) -> slog::Level {
+        match self {
+            LogLevel::Debug => slog::Level::Debug,
+            LogLevel::Info => slog::Level::Info,
+        }
+    }
 }
 
 #[derive(PartialEq, Debug, Serialize)]
@@ -79,7 +111,7 @@ impl Preloader {
         let (ours, theirs) = std::os::unix::net::UnixStream::pair()
             .context("Could not initialize preloader unix socket pair")?;
         let their_fd = fcntl(theirs.as_raw_fd(), FcntlArg::F_DUPFD(theirs.as_raw_fd()))
-            .context("Could not clear CLOFD from the status pipe")?;
+            .context("Could not clear CLOEXEC from the status pipe")?;
 
         let theirs_str = their_fd.to_string();
         let mut cmd = Command::new("bundle");
@@ -96,11 +128,11 @@ impl Preloader {
                 "-r",
             ])
             .arg(load.as_os_str());
-        debug!("running preloader"; "cmd" => format!("{:?}", cmd));
+        debug!("running preloader"; "cmd" => ?cmd);
         let child = cmd.spawn().context("spawning kleinhirn_loader")?;
         let socket = UnixStream::from_std(ours).context("unable to setup UNIX stream")?;
         let reader = BufStream::new(socket);
-        debug!("child running"; "pid" => format!("{:?}", child.id()));
+        debug!("child running"; "pid" => ?child.id());
         Ok(Preloader {
             control_channel: reader,
             pid: child.id(),
@@ -120,22 +152,19 @@ impl Preloader {
 #[async_trait]
 impl ProcessControl for Preloader {
     async fn initialize(&mut self) -> Result<()> {
+        let mut state = PreloaderState::starting();
         loop {
+            match state {
+                PreloaderState::Starting(_) | PreloaderState::Loading(_) => (),
+                _ => break,
+            }
             let msg = self.next_message().await?;
-            match msg {
-                PreloaderMessage::Loading { file } => {
-                    debug!("loading"; "file" => file.to_str());
-                }
-                PreloaderMessage::Ready => {
-                    debug!("ready");
-                    return Ok(());
-                }
-                other => {
-                    return Err(Error::msg(format!(
-                        "Unexpected status from preloader: {:?}",
-                        other
-                    )));
-                }
+            state = state.on_preloader_message(msg);
+        }
+        match state {
+            PreloaderState::Ready(_) => Ok(()),
+            state => {
+                bail!("Unexpected preloader state {:?}", state);
             }
         }
     }

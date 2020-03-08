@@ -52,7 +52,7 @@ async fn supervise(
                         info!("requested launch"; "id" => &id);
                         machine = machine.on_worker_requested(WorkerRequested::new(id));
                     }
-                    Err(e) => info!("failed to launch"; "error" => format!("{:?}", e)),
+                    Err(e) => info!("failed to launch"; "error" => ?e),
                 }
             }
         }
@@ -65,14 +65,14 @@ async fn supervise(
                         info!("reaped child"; "pid" => pid.as_raw());
                         machine = machine.on_worker_death(WorkerDeath::new(pid))
                     }
-                    Err(e) => info!("failed to reap"; "error" => format!("{:?}", e))
+                    Err(e) => info!("failed to reap"; "error" => ?e)
                 }
             }
             msg = proc.next_message().fuse() => {
-                debug!("received message"; "msg" => format!("{:?}", msg));
+                debug!("received message"; "msg" => ?msg);
                 use PreloaderMessage::*;
                 match msg {
-                    Err(e) => info!("could not read preloader message"; "error" => format!("{:?}", e)),
+                    Err(e) => info!("could not read preloader message"; "error" => ?e),
                     Ok(Launched{id, pid}) => {
                         machine = machine.on_worker_launched(WorkerLaunched::new(id, Pid::from_raw(pid)));
                     }
@@ -80,12 +80,12 @@ async fn supervise(
                         machine = machine.on_worker_acked(WorkerAcked::new(id));
                     }
                     e @ _ => {
-                        info!("Received unexpected message"; "msg" => format!("{:?}", e));
+                        info!("Received unexpected message"; "msg" => ?e);
                     }
                 }
             }
         };
-        debug!("machine is now"; "machine" => format!("{:?}", machine));
+        debug!("machine is now"; "machine" => ?machine);
     }
 }
 
@@ -103,8 +103,8 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
             let gemfile = settings.canonical_path(&rb.gemfile);
             let load = settings.canonical_path(&rb.load);
             info!("loading ruby";
-                  "gemfile" => gemfile.to_str().unwrap_or("unprintable"),
-                  "load" => load.to_str().unwrap_or("unprintable"),
+                  "gemfile" => ?gemfile,
+                  "load" => ?load,
                   "start_expression" => &rb.start_expression,
             );
             Box::new(Preloader::for_ruby(&gemfile, &load, &rb.start_expression)?)

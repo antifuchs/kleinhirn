@@ -144,8 +144,7 @@ module KleinhirnLoader
     end
 
     # Double-forks one pre-loaded worker process. The real PID is
-    # discarded. If the intermediary child exited with a non-zero exit
-    # status, returns `false`.
+    # discarded.
     sig do
       params(child_id: String)
         .void

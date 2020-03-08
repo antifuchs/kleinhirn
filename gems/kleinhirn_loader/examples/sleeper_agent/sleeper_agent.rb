@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# typed: true
 # frozen_string_literal: true
 
 # This file is a script that waits 2 seconds, acks that it launched,

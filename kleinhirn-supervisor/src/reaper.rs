@@ -44,7 +44,7 @@ impl Zombies {
 
                 // Anything else is a status change we don't care about. On to the next one:
                 e @ _ => {
-                    debug!("weird process change detected that we'll ignore"; "change" => format!("{:?}", e));
+                    debug!("weird process change detected that we'll ignore"; "change" => ?e);
                 }
             }
 

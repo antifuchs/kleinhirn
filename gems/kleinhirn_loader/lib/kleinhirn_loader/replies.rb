@@ -135,5 +135,36 @@ module KleinhirnLoader
         }.to_json
       end
     end
+
+    # A log message that the supervisor process should either log or
+    # discard, according to its log level settings.
+    class Log < AbstractReply
+      # A log level
+      class Level < T::Enum
+        enums do
+          Debug = new('debug')
+          Info = new('info')
+        end
+      end
+
+      sig do
+        params(level: Level, msg: String, kwargs: String)
+          .void
+      end
+      def initialize(level, msg, **kwargs)
+        @level = level
+        @msg = msg
+        @kwargs = T.let(kwargs, T::Hash[Symbol, String])
+      end
+
+      sig { override.params(_args: T.untyped).returns(String) }
+      def to_json(*_args)
+        @kwargs.merge(
+          'action': 'log',
+          'level': @level,
+          'msg': @msg,
+        ).to_json
+      end
+    end
   end
 end
