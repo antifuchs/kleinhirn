@@ -148,18 +148,18 @@ module KleinhirnLoader
       end
 
       sig do
-        params(level: Level, msg: String, kwargs: String)
+        params(level: Level, msg: String, fields: T::Hash[Symbol, String])
           .void
       end
-      def initialize(level, msg, **kwargs)
+      def initialize(level, msg, fields)
         @level = level
         @msg = msg
-        @kwargs = T.let(kwargs, T::Hash[Symbol, String])
+        @fields = fields
       end
 
       sig { override.params(_args: T.untyped).returns(String) }
       def to_json(*_args)
-        @kwargs.merge(
+        @fields.merge(
           'action': 'log',
           'level': @level,
           'msg': @msg,

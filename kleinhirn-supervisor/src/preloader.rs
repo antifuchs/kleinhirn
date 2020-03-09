@@ -120,9 +120,9 @@ impl Preloader {
     }
 
     async fn next_preloader_message(&mut self) -> Result<PreloaderMessage> {
-        let mut line = String::new();
-        self.control_channel.read_line(&mut line).await?;
         loop {
+            let mut line = String::new();
+            self.control_channel.read_line(&mut line).await?;
             if let Some(msg) = logging::translate_message(serde_json::from_str(&line)?) {
                 return Ok(msg);
             }

@@ -80,6 +80,23 @@ module KleinhirnLoader
     end
     def state_update(reply)
       @status_io.puts(reply.to_json)
+      @status_io.flush
+    end
+
+    sig do
+      params(msg: String, fields: String).void
+    end
+    def log_info(msg, **fields)
+      level = KleinhirnLoader::Replies::Log::Level::Info
+      state_update(KleinhirnLoader::Replies::Log.new(level, msg, fields))
+    end
+
+    sig do
+      params(msg: String, fields: String).void
+    end
+    def log_debug(msg, **fields)
+      level = KleinhirnLoader::Replies::Log::Level::Debug
+      state_update(KleinhirnLoader::Replies::Log.new(level, msg, fields))
     end
 
     # An empty (except for sorbet type annotations) binding
@@ -143,8 +160,9 @@ module KleinhirnLoader
       T.unsafe(GC).compact if GC.respond_to?(:compact)
     end
 
-    # Double-forks one pre-loaded worker process. The real PID is
-    # discarded.
+    # Double-forks one pre-loaded worker process. The direct child's
+    # PID is discarded, in expectation of getting re-parented to our
+    # supervisor process.
     sig do
       params(child_id: String)
         .void
@@ -168,6 +186,7 @@ module KleinhirnLoader
       # Now we're in the worker - start it up.
       process_name = "#{@name}/#{@version} ::KleinhirnLoader::Worker #{child_id} - startup"
       Process.setproctitle(process_name)
+      log_info('worker starting', child_id: child_id, pid: Process.pid.to_s)
       eval(@expression, Empty.new.to_binding) # rubocop:disable Security/Eval
       exit(0)
     end
