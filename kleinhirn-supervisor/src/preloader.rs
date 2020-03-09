@@ -1,11 +1,11 @@
-use nix::fcntl::{fcntl, FcntlArg};
-use slog_scope::debug;
-
 use self::machine::PreloaderState;
 use crate::process_control::{Message, ProcessControl};
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
+use nix::fcntl::{fcntl, FcntlArg};
+use nix::unistd::close;
 use serde::{Deserialize, Serialize};
+use slog_scope::debug;
 use slog_scope::info;
 use std::{
     collections::HashMap,
@@ -13,6 +13,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufStream};
 use tokio::net::UnixStream;
 
@@ -76,6 +77,10 @@ pub struct Preloader {
     pid: u32,
 }
 
+#[derive(Error, Debug, PartialEq)]
+#[error("preloader process has died")]
+pub struct PreloaderDied;
+
 impl Preloader {
     /// Constructs the ruby preloader, starts it and waits until the code is loaded.
     pub fn for_ruby(gemfile: &Path, load: &Path, start_expression: &str) -> Result<Preloader> {
@@ -83,6 +88,7 @@ impl Preloader {
             .context("Could not initialize preloader unix socket pair")?;
         let their_fd = fcntl(theirs.as_raw_fd(), FcntlArg::F_DUPFD(theirs.as_raw_fd()))
             .context("Could not clear CLOEXEC from the status pipe")?;
+        close(theirs.as_raw_fd()).context("closing the remote FD")?;
 
         let theirs_str = their_fd.to_string();
         let mut cmd = Command::new("bundle");
@@ -104,6 +110,9 @@ impl Preloader {
         let socket = UnixStream::from_std(ours).context("unable to setup UNIX stream")?;
         let reader = BufStream::new(socket);
         debug!("child running"; "pid" => ?child.id());
+        // close the socket we passed to our children:
+        close(their_fd).context("closing the dup'ed FD")?;
+
         Ok(Preloader {
             control_channel: reader,
             pid: child.id(),
@@ -122,7 +131,12 @@ impl Preloader {
     async fn next_preloader_message(&mut self) -> Result<PreloaderMessage> {
         loop {
             let mut line = String::new();
-            self.control_channel.read_line(&mut line).await?;
+            let count = self.control_channel.read_line(&mut line).await?;
+            if count == 0 {
+                // Preloader has closed the connection. We assume it's dead.
+                debug!("read 0 bytes off the preloader pipe, it's dead");
+                return Err(PreloaderDied)?;
+            }
             if let Some(msg) = logging::translate_message(serde_json::from_str(&line)?) {
                 return Ok(msg);
             }

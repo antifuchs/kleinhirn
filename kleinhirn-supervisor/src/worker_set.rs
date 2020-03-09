@@ -145,7 +145,8 @@ impl fmt::Debug for WorkerSet {
 
 methods!(WorkerSet, [
     // TODO: Faulted?
-    Startup, Underprovisioned => fn required_action(&self) -> Option<Todo>
+    Startup, Underprovisioned => fn required_action(&self) -> Option<Todo>,
+    Startup, Running, Underprovisioned => fn working(&self) -> bool
 ]);
 
 #[derive(Clone, Debug, PartialEq)]
@@ -194,19 +195,27 @@ impl WorkerAcked {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Terminate();
 
+#[derive(Clone, Debug, PartialEq, Copy)]
+pub enum MiserableCondition {
+    PreloaderDied,
+}
+
 transitions!(WorkerSet, [
     (Startup, WorkerRequested) => Startup,
     (Startup, WorkerLaunched) => Startup,
     (Startup, WorkerAcked) => [Running, Startup],
     (Startup, WorkerDeath) => [Startup, Faulted],
+    (Startup, MiserableCondition) => Faulted,
 
     (Running, WorkerDeath) => [Running, Underprovisioned],
     (Running, WorkerAcked) => Running,
+    (Running, MiserableCondition) => Faulted,
 
     (Underprovisioned, WorkerRequested) => Underprovisioned,
     (Underprovisioned, WorkerLaunched) => Underprovisioned,
     (Underprovisioned, WorkerAcked) => [Running, Underprovisioned],
-    (Underprovisioned, WorkerDeath) => [Underprovisioned, Faulted]
+    (Underprovisioned, WorkerDeath) => [Underprovisioned, Faulted],
+    (Underprovisioned, MiserableCondition) => Faulted
 ]);
 
 impl Running {
@@ -222,6 +231,15 @@ impl Running {
     fn on_worker_acked(self, s: WorkerAcked) -> Running {
         let state = self.state;
         state.handle_ack(s.id, |state| Running { state }, |state| Running { state })
+    }
+
+    fn on_miserable_condition(self, _s: MiserableCondition) -> Faulted {
+        let state = self.state;
+        Faulted { state }
+    }
+
+    fn working(&self) -> bool {
+        true
     }
 }
 
@@ -254,6 +272,11 @@ impl Startup {
         }
     }
 
+    fn on_miserable_condition(self, _s: MiserableCondition) -> Faulted {
+        let state = self.state;
+        Faulted { state }
+    }
+
     fn required_action(&self) -> Option<Todo> {
         if self
             .state
@@ -267,6 +290,10 @@ impl Startup {
         } else {
             None
         }
+    }
+
+    fn working(&self) -> bool {
+        true
     }
 }
 
@@ -300,6 +327,11 @@ impl Underprovisioned {
         }
     }
 
+    fn on_miserable_condition(self, _s: MiserableCondition) -> Faulted {
+        let state = self.state;
+        Faulted { state }
+    }
+
     fn required_action(&self) -> Option<Todo> {
         if self
             .state
@@ -313,6 +345,10 @@ impl Underprovisioned {
         } else {
             None
         }
+    }
+
+    fn working(&self) -> bool {
+        true
     }
 }
 

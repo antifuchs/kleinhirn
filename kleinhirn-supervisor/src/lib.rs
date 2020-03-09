@@ -8,14 +8,16 @@ use anyhow::Result;
 use fork_exec::ForkExec;
 use futures::future::FutureExt;
 use nix::unistd::Pid;
-use preloader::Preloader;
+use preloader::{Preloader, PreloaderDied};
 use process_control::{Message, ProcessControl};
 use reaper::Zombies;
 use slog::o;
 use slog_scope::{debug, info};
 use std::convert::Infallible;
 use tokio::select;
-use worker_set::{Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested, WorkerSet};
+use worker_set::{
+    MiserableCondition, Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested, WorkerSet,
+};
 
 mod fork_exec;
 mod preloader;
@@ -42,6 +44,16 @@ async fn supervise(
 ) -> Infallible {
     let mut machine = WorkerSet::new(config);
     loop {
+        if let None = machine.working() {
+            // We're broken. Just reap children & wait quietly for the
+            // sweet release of death.
+            match zombies.reap().await {
+                Ok(pid) => info!("reaped child"; "pid" => ?pid),
+                Err(e) => info!("failed to reap"; "error" => ?e),
+            }
+            continue;
+        }
+
         // Process things we need to do now:
         match machine.required_action().and_then(|todo| todo) {
             None => {}
@@ -63,11 +75,11 @@ async fn supervise(
 
         // Read events off the environment:
         select! {
+            // TODO: check the preloader PID also - could be that the
+            // control pipe is held open by a broken child.
             res = zombies.reap().fuse() => {
                 match res {
                     Ok(pid) => {
-                        // TODO: check that the dead PID belongs to a worker
-                        // TODO2: figure out what to do about preloader death.
                         info!("reaped child"; "pid" => pid.as_raw());
                         machine = machine.on_worker_death(WorkerDeath::new(pid))
                     }
@@ -78,6 +90,10 @@ async fn supervise(
                 debug!("received message"; "msg" => ?msg);
                 use Message::*;
                 match msg {
+                    Err(e) if e.is::<PreloaderDied>() => {
+                        info!("preloader process is dead");
+                        machine = machine.on_miserable_condition(MiserableCondition::PreloaderDied);
+                    }
                     Err(e) => info!("could not read preloader message"; "error" => ?e),
                     Ok(Launched{id, pid}) => {
                         machine = machine.on_worker_launched(WorkerLaunched::new(id, Pid::from_raw(pid as i32)));
