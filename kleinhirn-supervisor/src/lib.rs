@@ -61,11 +61,13 @@ async fn supervise(
             }
         }
 
-        // Read events off the environment
+        // Read events off the environment:
         select! {
             res = zombies.reap().fuse() => {
                 match res {
                     Ok(pid) => {
+                        // TODO: check that the dead PID belongs to a worker
+                        // TODO2: figure out what to do about preloader death.
                         info!("reaped child"; "pid" => pid.as_raw());
                         machine = machine.on_worker_death(WorkerDeath::new(pid))
                     }

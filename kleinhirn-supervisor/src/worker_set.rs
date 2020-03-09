@@ -49,9 +49,12 @@ impl Workers {
         });
     }
 
-    fn delete_by_pid(&mut self, pid: Pid) {
+    #[must_use = "It's important to check that the thing that got reaped is a worker of ours"]
+    fn delete_by_pid(&mut self, pid: Pid) -> Option<Worker> {
         if let Some(id) = self.by_pid.get(&pid) {
-            self.by_id.remove(id);
+            self.by_id.remove(id)
+        } else {
+            None
         }
     }
 
@@ -191,28 +194,29 @@ impl WorkerAcked {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Terminate();
 
-transitions!(WorkerSet,
-  [
+transitions!(WorkerSet, [
     (Startup, WorkerRequested) => Startup,
     (Startup, WorkerLaunched) => Startup,
     (Startup, WorkerAcked) => [Running, Startup],
-    (Startup, WorkerDeath) => Faulted,
+    (Startup, WorkerDeath) => [Startup, Faulted],
 
-    (Running, WorkerDeath) => Underprovisioned,
+    (Running, WorkerDeath) => [Running, Underprovisioned],
     (Running, WorkerAcked) => Running,
 
     (Underprovisioned, WorkerRequested) => Underprovisioned,
     (Underprovisioned, WorkerLaunched) => Underprovisioned,
     (Underprovisioned, WorkerAcked) => [Running, Underprovisioned],
     (Underprovisioned, WorkerDeath) => [Underprovisioned, Faulted]
-  ]
-);
+]);
 
 impl Running {
-    fn on_worker_death(self, d: WorkerDeath) -> Underprovisioned {
+    fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
         let mut state = self.state;
-        state.workers.delete_by_pid(d.0);
-        Underprovisioned { state }
+        if let Some(_) = state.workers.delete_by_pid(d.0) {
+            WorkerSet::underprovisioned(state)
+        } else {
+            WorkerSet::running(state)
+        }
     }
 
     fn on_worker_acked(self, s: WorkerAcked) -> Running {
@@ -241,10 +245,13 @@ impl Startup {
         state.handle_ack(s.id, WorkerSet::startup, WorkerSet::running)
     }
 
-    fn on_worker_death(self, d: WorkerDeath) -> Faulted {
+    fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
         let mut state = self.state;
-        state.workers.delete_by_pid(d.0);
-        Faulted { state }
+        if let Some(_) = state.workers.delete_by_pid(d.0) {
+            WorkerSet::faulted(state)
+        } else {
+            WorkerSet::startup(state)
+        }
     }
 
     fn required_action(&self) -> Option<Todo> {
@@ -285,9 +292,12 @@ impl Underprovisioned {
 
     fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
         let mut state = self.state;
-        state.workers.delete_by_pid(d.0);
-        // TODO: treat this better with a circuit breaker (figure out what we want in the first place?)
-        WorkerSet::underprovisioned(state)
+        if let Some(_) = state.workers.delete_by_pid(d.0) {
+            // TODO: treat this better with a circuit breaker (figure out what we want in the first place?)
+            WorkerSet::underprovisioned(state)
+        } else {
+            WorkerSet::underprovisioned(state)
+        }
     }
 
     fn required_action(&self) -> Option<Todo> {

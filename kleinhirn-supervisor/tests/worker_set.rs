@@ -73,3 +73,20 @@ fn keeps_them_running() {
     assert_matches!(&machine, &WorkerSet::Running(_));
     assert_eq!(None, machine.required_action().and_then(|todo| todo));
 }
+
+#[test]
+fn no_problems_with_unrelated_pids() {
+    let config = configuration::WorkerConfig {
+        count: 3,
+        kind: configuration::WorkerKind::Ruby(configuration::Ruby {
+            gemfile: "./Gemfile".into(),
+            load: "lib/lib.rb".into(),
+            start_expression: "kleinhirn_main".to_string(),
+        }),
+    };
+    let mut machine = WorkerSet::new(config);
+    machine = ack_n_workers(machine, 1, 3);
+    // kill the second worker:
+    machine = machine.on_worker_death(WorkerDeath::new(Pid::from_raw(90)));
+    assert_matches!(&machine, &WorkerSet::Running(_));
+}
