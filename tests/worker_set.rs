@@ -1,5 +1,5 @@
-use kleinhirn_supervisor::configuration;
-use kleinhirn_supervisor::worker_set::{
+use kleinhirn::configuration;
+use kleinhirn::worker_set::{
     Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested, WorkerSet,
 };
 use matches::assert_matches;

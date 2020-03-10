@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use kleinhirn_supervisor::*;
+use kleinhirn::*;
 use slog::{o, Drain, Logger};
 use slog_scope::info;
 use std::{env::current_dir, path::PathBuf};
@@ -43,7 +43,7 @@ fn main() -> Result<()> {
     settings.base_dir = config_file.parent().map(|p| p.to_owned()).unwrap_or(cwd);
     info!("startup");
     rt.block_on(async {
-        kleinhirn_supervisor::run(settings).await?;
+        kleinhirn::run(settings).await?;
 
         Ok(())
     })
