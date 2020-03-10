@@ -14,6 +14,7 @@ pub struct Config {
 }
 
 impl Config {
+    #[allow(dead_code)] // TODO: use this more consistently
     pub(crate) fn canonical_path<P: AsRef<Path>>(&self, path: P) -> PathBuf {
         self.base_dir.join(path)
     }
@@ -51,7 +52,7 @@ fn default_count() -> usize {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Program {
     pub cmdline: Vec<String>,
     pub env: HashMap<String, String>,
@@ -91,5 +92,6 @@ pub enum WorkerKind {
     /// bundle exec --gemfile=<gemfile_path> --keep-file-descriptors \
     ///             kleinhirn_loader -- <load> <start_expression>
     /// ```
+    #[cfg(target_os = "linux")]
     Ruby(Ruby),
 }

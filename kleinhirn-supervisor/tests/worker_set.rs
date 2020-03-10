@@ -31,10 +31,9 @@ fn ack_n_workers(mut machine: WorkerSet, from: usize, n: usize) -> WorkerSet {
 fn starts_workers_until_done() {
     let config = configuration::WorkerConfig {
         count: 3,
-        kind: configuration::WorkerKind::Ruby(configuration::Ruby {
-            gemfile: "./Gemfile".into(),
-            load: "lib/lib.rb".into(),
-            start_expression: "kleinhirn_main".to_string(),
+        kind: configuration::WorkerKind::Program(configuration::Program {
+            cmdline: vec!["/bin/true".to_string()],
+            ..Default::default()
         }),
     };
     let mut machine = WorkerSet::new(config);
@@ -55,10 +54,9 @@ fn starts_workers_until_done() {
 fn keeps_them_running() {
     let config = configuration::WorkerConfig {
         count: 3,
-        kind: configuration::WorkerKind::Ruby(configuration::Ruby {
-            gemfile: "./Gemfile".into(),
-            load: "lib/lib.rb".into(),
-            start_expression: "kleinhirn_main".to_string(),
+        kind: configuration::WorkerKind::Program(configuration::Program {
+            cmdline: vec!["/bin/true".to_string()],
+            ..Default::default()
         }),
     };
     let mut machine = WorkerSet::new(config);
@@ -78,10 +76,9 @@ fn keeps_them_running() {
 fn no_problems_with_unrelated_pids() {
     let config = configuration::WorkerConfig {
         count: 3,
-        kind: configuration::WorkerKind::Ruby(configuration::Ruby {
-            gemfile: "./Gemfile".into(),
-            load: "lib/lib.rb".into(),
-            start_expression: "kleinhirn_main".to_string(),
+        kind: configuration::WorkerKind::Program(configuration::Program {
+            cmdline: vec!["/bin/true".to_string()],
+            ..Default::default()
         }),
     };
     let mut machine = WorkerSet::new(config);

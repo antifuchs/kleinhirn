@@ -8,7 +8,7 @@ use anyhow::Result;
 use fork_exec::ForkExec;
 use futures::future::FutureExt;
 use nix::unistd::Pid;
-use preloader::{Preloader, PreloaderDied};
+use preloader::PreloaderDied;
 use process_control::{Message, ProcessControl};
 use reaper::Zombies;
 use slog::o;
@@ -18,6 +18,9 @@ use tokio::select;
 use worker_set::{
     MiserableCondition, Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested, WorkerSet,
 };
+
+#[cfg(target_os = "linux")]
+use preloader::Preloader;
 
 mod fork_exec;
 mod preloader;
@@ -117,6 +120,7 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
     );
 
     let mut proc: Box<dyn ProcessControl> = match &settings.worker.kind {
+        #[cfg(target_os = "linux")]
         configuration::WorkerKind::Ruby(rb) => {
             let gemfile = settings.canonical_path(&rb.gemfile);
             let load = settings.canonical_path(&rb.load);

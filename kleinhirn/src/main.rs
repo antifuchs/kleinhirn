@@ -1,11 +1,5 @@
-#[cfg(not(target_os = "linux"))]
-compile_error!(
-    "kleinhirn needs the prctl/PR_SET_CHILD_SUBREAPER syscall, which is only available on linux."
-);
-
 use anyhow::{Context, Result};
 use kleinhirn_supervisor::*;
-use prctl;
 use slog::{o, Drain, Logger};
 use slog_scope::info;
 use std::{env::current_dir, path::PathBuf};
@@ -48,8 +42,6 @@ fn main() -> Result<()> {
     let cwd = current_dir()?;
     settings.base_dir = config_file.parent().map(|p| p.to_owned()).unwrap_or(cwd);
     info!("startup");
-    prctl::set_child_subreaper(true)
-        .map_err(|code| anyhow::anyhow!("Unable to set subreaper status. Status {:?}", code))?;
     rt.block_on(async {
         kleinhirn_supervisor::run(settings).await?;
 
