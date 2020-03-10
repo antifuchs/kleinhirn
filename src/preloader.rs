@@ -95,7 +95,7 @@ impl Preloader {
             if count == 0 {
                 // Preloader has closed the connection. We assume it's dead.
                 debug!("read 0 bytes off the preloader pipe, it's dead");
-                return Err(PreloaderDied)?;
+                return Err(PreloaderDied.into());
             }
             if let Some(msg) = logging::translate_message(serde_json::from_str(&line)?) {
                 return Ok(msg);

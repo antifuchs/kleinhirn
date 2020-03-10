@@ -47,7 +47,7 @@ async fn supervise(
 ) -> Infallible {
     let mut machine = WorkerSet::new(config);
     loop {
-        if let None = machine.working() {
+        if machine.working().is_none() {
             // We're broken. Just reap children & wait quietly for the
             // sweet release of death.
             match zombies.reap().await {

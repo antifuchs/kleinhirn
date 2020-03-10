@@ -221,7 +221,7 @@ transitions!(WorkerSet, [
 impl Running {
     fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
         let mut state = self.state;
-        if let Some(_) = state.workers.delete_by_pid(d.0) {
+        if state.workers.delete_by_pid(d.0).is_some() {
             WorkerSet::underprovisioned(state)
         } else {
             WorkerSet::running(state)
@@ -265,7 +265,7 @@ impl Startup {
 
     fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
         let mut state = self.state;
-        if let Some(_) = state.workers.delete_by_pid(d.0) {
+        if state.workers.delete_by_pid(d.0).is_some() {
             WorkerSet::faulted(state)
         } else {
             WorkerSet::startup(state)
@@ -319,12 +319,10 @@ impl Underprovisioned {
 
     fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
         let mut state = self.state;
-        if let Some(_) = state.workers.delete_by_pid(d.0) {
+        if state.workers.delete_by_pid(d.0).is_some() {
             // TODO: treat this better with a circuit breaker (figure out what we want in the first place?)
-            WorkerSet::underprovisioned(state)
-        } else {
-            WorkerSet::underprovisioned(state)
         }
+        WorkerSet::underprovisioned(state)
     }
 
     fn on_miserable_condition(self, _s: MiserableCondition) -> Faulted {
