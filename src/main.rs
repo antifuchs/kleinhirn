@@ -1,16 +1,16 @@
 use anyhow::{Context, Result};
 use kleinhirn::*;
 use slog::{o, Drain, Logger};
+use slog_logfmt::Logfmt;
 use slog_scope::info;
+use std::io::stderr;
 use std::{env::current_dir, path::PathBuf};
 use structopt::StructOpt;
 use tokio::runtime::Runtime;
 
 fn create_logger() -> Logger {
-    // This should do for now, but
-    // TODO: Use json logging
-    let decorator = slog_term::PlainSyncDecorator::new(std::io::stderr());
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = Logfmt::new(stderr()).build().fuse();
+    let drain = slog_async::Async::new(drain).build().fuse();
     Logger::root(drain, o!("logger" => "kleinhirn"))
 }
 
