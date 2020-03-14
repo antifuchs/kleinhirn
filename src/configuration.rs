@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 #[serde(rename_all = "snake_case")]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Config {
+    #[serde(default)]
+    pub log: LoggingConfig,
     pub supervisor: SupervisorConfig,
     pub worker: WorkerConfig,
 
@@ -17,6 +19,89 @@ impl Config {
     #[allow(dead_code)] // TODO: use this more consistently
     pub(crate) fn canonical_path<P: AsRef<Path>>(&self, path: P) -> PathBuf {
         self.base_dir.join(path)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct LoggingConfig {
+    #[serde(default)]
+    pub format: LogFormat,
+    #[serde(default)]
+    pub output: LogOutput,
+    #[serde(default)]
+    pub level: LogLevel,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        LoggingConfig {
+            format: LogFormat::Logfmt { print_prefix: true },
+            output: Default::default(),
+            level: Default::default(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum LogLevel {
+    Critical,
+    Error,
+    Warning,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl Default for LogLevel {
+    fn default() -> Self {
+        LogLevel::Info
+    }
+}
+
+impl Into<slog::Level> for LogLevel {
+    fn into(self) -> slog::Level {
+        use slog::Level::*;
+        match self {
+            Self::Critical => Critical,
+            Self::Error => Error,
+            Self::Warning => Warning,
+            Self::Info => Info,
+            Self::Debug => Debug,
+            Self::Trace => Trace,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "format")]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum LogFormat {
+    Json,
+    Logfmt { print_prefix: bool },
+}
+
+impl Default for LogFormat {
+    fn default() -> Self {
+        LogFormat::Logfmt { print_prefix: true }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum LogOutput {
+    Stderr,
+    Stdout,
+}
+
+impl Default for LogOutput {
+    fn default() -> Self {
+        LogOutput::Stderr
     }
 }
 

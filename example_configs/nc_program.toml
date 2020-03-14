@@ -1,3 +1,8 @@
+[log]
+output = "stderr"
+format = {format = "json"}
+level = "debug"
+
 [supervisor]
 name = "nc-as-a-program"
 
