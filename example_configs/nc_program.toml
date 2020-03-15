@@ -3,6 +3,9 @@ output = "stderr"
 format = {format = "json"}
 level = "debug"
 
+[health_check]
+listen_addr = "127.0.0.1:3000"
+
 [supervisor]
 name = "nc-as-a-program"
 

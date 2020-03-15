@@ -175,7 +175,7 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
     let machine = Machine::new(WorkerSet::new(settings.worker));
 
     proc.as_mut().initialize().await?;
-    let health_server = health::healthcheck_server(machine.clone());
+    let health_server = health::healthcheck_server(settings.health_check, machine.clone());
     select! {
         _ = supervise(machine, terminations, proc) => {
             unreachable!("supervise never quits.");
