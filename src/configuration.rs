@@ -1,11 +1,17 @@
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::{
+    net::SocketAddr,
+    path::{Path, PathBuf},
+};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Config {
+    #[serde(default)]
+    pub health_check: HealthConfig,
+
     #[serde(default)]
     pub log: LoggingConfig,
     pub supervisor: SupervisorConfig,
@@ -20,6 +26,21 @@ impl Config {
     pub(crate) fn canonical_path<P: AsRef<Path>>(&self, path: P) -> PathBuf {
         self.base_dir.join(path)
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+pub struct HealthConfig {
+    #[serde(default)]
+    pub listen_addr: Option<SocketAddr>,
+
+    #[serde(default = "default_health_endpoint")]
+    pub endpoint: String,
+}
+
+fn default_health_endpoint() -> String {
+    "/healthz".to_string()
 }
 
 #[derive(Deserialize)]
