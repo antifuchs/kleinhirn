@@ -38,19 +38,25 @@ impl Machine {
     fn new(set: WorkerSet) -> Self {
         Machine(Arc::new(Mutex::new(Some(set))))
     }
+
+    fn interrogate<T>(&self, with: fn(&WorkerSet) -> T) -> T {
+        self.0.lock().as_ref().map(with).unwrap()
+    }
+
+    fn update(&self, with: impl Fn(WorkerSet) -> WorkerSet) {
+        let mut guard = self.0.lock();
+        let new_machine = guard.take().map(with);
+        *guard = new_machine;
+    }
 }
 
 impl HealthIndicator for Machine {
     fn health_check(&self) -> health::State {
-        let machine = self.0.lock();
-        match &*machine {
-            Some(WorkerSet::Running(_)) => State::Healthy,
-            Some(WorkerSet::Startup(_)) => State::Unhealthy(anyhow!("still starting up").into()),
-            Some(state) => {
-                State::Unhealthy(anyhow!("Machine in unhealthy state: {:?}", state).into())
-            }
-            None => unreachable!("We should never have no data here"),
-        }
+        self.interrogate(|machine| match machine {
+            WorkerSet::Running(_) => State::Healthy,
+            WorkerSet::Startup(_) => State::Unhealthy(anyhow!("still starting up").into()),
+            state => State::Unhealthy(anyhow!("Machine in unhealthy state: {:?}", state).into()),
+        })
     }
 }
 
@@ -70,8 +76,7 @@ async fn supervise(
     mut proc: Box<dyn ProcessControl>,
 ) -> Infallible {
     loop {
-        let mut m = machine.0.lock();
-        if m.as_ref().and_then(|m| m.working()).is_none() {
+        if machine.interrogate(|m| m.working()).is_none() {
             // We're broken. Just reap children & wait quietly for the
             // sweet release of death.
             match zombies.reap().await {
@@ -82,9 +87,8 @@ async fn supervise(
         }
 
         // Process things we need to do now:
-        match m
-            .as_ref()
-            .and_then(|m| m.required_action())
+        match machine
+            .interrogate(|m| m.required_action())
             .and_then(|todo| todo)
         {
             None => {}
@@ -97,45 +101,42 @@ async fn supervise(
                 match proc.spawn_process().await {
                     Ok(id) => {
                         info!("requested launch"; "id" => &id);
-                        *m = m
-                            .take()
-                            .and_then(|m| Some(m.on_worker_requested(WorkerRequested::new(id))));
+                        machine.update(move |m| {
+                            m.on_worker_requested(WorkerRequested::new(id.clone()))
+                        });
                     }
                     Err(e) => info!("failed to launch"; "error" => ?e),
                 }
             }
         }
-        drop(m);
 
         // Read events off the environment:
         select! {
             // TODO: check the preloader PID also - could be that the
             // control pipe is held open by a broken child.
             res = zombies.reap().fuse() => {
-                let mut m = machine.0.lock();
                 match res {
                     Ok(pid) => {
                         info!("reaped child"; "pid" => pid.as_raw());
-                        *m = m.take().and_then(|m| Some(m.on_worker_death(WorkerDeath::new(pid))))
+                        machine.update(|m| m.on_worker_death(WorkerDeath::new(pid)));
                     }
                     Err(e) => info!("failed to reap"; "error" => ?e)
                 }
             }
             msg = proc.next_message().fuse() => {
-                let mut m = machine.0.lock();
                 debug!("received message"; "msg" => ?msg);
                 use Message::*;
                 match msg {
                     Err(e) if e.is::<PreloaderDied>() => {
                         info!("preloader process is dead");
-                        *m = m.take().and_then(|m| Some(m.on_miserable_condition(MiserableCondition::PreloaderDied)));
+                        machine.update(|m| m.on_miserable_condition(MiserableCondition::PreloaderDied));
                     }
                     Err(e) => info!("could not read preloader message"; "error" => ?e),
                     Ok(Launched{id, pid}) => {
-                        *m = m.take().and_then(|m| (Some(m.on_worker_launched(WorkerLaunched::new(id, Pid::from_raw(pid as i32))))));
+                        machine.update(move |m| m.on_worker_launched(WorkerLaunched::new(id.clone(), Pid::from_raw(pid as i32))))
                     }
                     Ok(Ack{id}) => {
-                        *m = m.take().and_then(|m| (Some(m.on_worker_acked(WorkerAcked::new(id)))));
+                        machine.update(move |m| m.on_worker_acked(WorkerAcked::new(id.clone())))
                     }
                 }
             }
