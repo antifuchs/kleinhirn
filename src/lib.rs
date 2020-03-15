@@ -3,32 +3,56 @@
 //! This is the "root" process of the kleinhirn process hierarchy. It listens for external
 //! commands, spawns the configured number of workers and supervises them.
 
-use anyhow::Result;
-
+use anyhow::{anyhow, Result};
 use fork_exec::ForkExec;
 use futures::future::FutureExt;
+use health::{HealthIndicator, State};
 use nix::unistd::Pid;
+use parking_lot::Mutex;
+#[cfg(target_os = "linux")]
+use preloader::Preloader;
 use preloader::PreloaderDied;
 use process_control::{Message, ProcessControl};
 use reaper::Zombies;
 use slog::o;
-use slog_scope::{debug, info};
-use std::convert::Infallible;
+use slog_scope::{crit, debug, info};
+use std::{convert::Infallible, sync::Arc};
 use tokio::select;
 use worker_set::{
     MiserableCondition, Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested, WorkerSet,
 };
 
-#[cfg(target_os = "linux")]
-use preloader::Preloader;
-
 mod fork_exec;
+mod health;
 mod preloader;
 mod process_control;
 
 pub mod configuration;
 pub mod reaper;
 pub mod worker_set;
+
+#[derive(Clone)]
+struct Machine(Arc<Mutex<Option<WorkerSet>>>);
+
+impl Machine {
+    fn new(set: WorkerSet) -> Self {
+        Machine(Arc::new(Mutex::new(Some(set))))
+    }
+}
+
+impl HealthIndicator for Machine {
+    fn health_check(&self) -> health::State {
+        let machine = self.0.lock();
+        match &*machine {
+            Some(WorkerSet::Running(_)) => State::Healthy,
+            Some(WorkerSet::Startup(_)) => State::Unhealthy(anyhow!("still starting up").into()),
+            Some(state) => {
+                State::Unhealthy(anyhow!("Machine in unhealthy state: {:?}", state).into())
+            }
+            None => unreachable!("We should never have no data here"),
+        }
+    }
+}
 
 // let's try (at least on this function call level) to ensure all
 // problematic conditions are handled in a way that doesn't leave this
@@ -40,14 +64,14 @@ pub mod worker_set;
     clippy::result_expect_used
 )]
 async fn supervise(
-    config: configuration::WorkerConfig,
+    machine: Machine,
     mut zombies: Zombies,
     // TODO: uh, I need to make this generic enough for the fork/exec method.
     mut proc: Box<dyn ProcessControl>,
 ) -> Infallible {
-    let mut machine = WorkerSet::new(config);
     loop {
-        if machine.working().is_none() {
+        let mut m = machine.0.lock();
+        if m.as_ref().and_then(|m| m.working()).is_none() {
             // We're broken. Just reap children & wait quietly for the
             // sweet release of death.
             match zombies.reap().await {
@@ -58,7 +82,11 @@ async fn supervise(
         }
 
         // Process things we need to do now:
-        match machine.required_action().and_then(|todo| todo) {
+        match m
+            .as_ref()
+            .and_then(|m| m.required_action())
+            .and_then(|todo| todo)
+        {
             None => {}
             Some(Todo::KillProcess(pid)) => {
                 // TODO
@@ -69,45 +97,49 @@ async fn supervise(
                 match proc.spawn_process().await {
                     Ok(id) => {
                         info!("requested launch"; "id" => &id);
-                        machine = machine.on_worker_requested(WorkerRequested::new(id));
+                        *m = m
+                            .take()
+                            .and_then(|m| Some(m.on_worker_requested(WorkerRequested::new(id))));
                     }
                     Err(e) => info!("failed to launch"; "error" => ?e),
                 }
             }
         }
+        drop(m);
 
         // Read events off the environment:
         select! {
             // TODO: check the preloader PID also - could be that the
             // control pipe is held open by a broken child.
             res = zombies.reap().fuse() => {
+                let mut m = machine.0.lock();
                 match res {
                     Ok(pid) => {
                         info!("reaped child"; "pid" => pid.as_raw());
-                        machine = machine.on_worker_death(WorkerDeath::new(pid))
+                        *m = m.take().and_then(|m| Some(m.on_worker_death(WorkerDeath::new(pid))))
                     }
                     Err(e) => info!("failed to reap"; "error" => ?e)
                 }
             }
             msg = proc.next_message().fuse() => {
+                let mut m = machine.0.lock();
                 debug!("received message"; "msg" => ?msg);
                 use Message::*;
                 match msg {
                     Err(e) if e.is::<PreloaderDied>() => {
                         info!("preloader process is dead");
-                        machine = machine.on_miserable_condition(MiserableCondition::PreloaderDied);
+                        *m = m.take().and_then(|m| Some(m.on_miserable_condition(MiserableCondition::PreloaderDied)));
                     }
                     Err(e) => info!("could not read preloader message"; "error" => ?e),
                     Ok(Launched{id, pid}) => {
-                        machine = machine.on_worker_launched(WorkerLaunched::new(id, Pid::from_raw(pid as i32)));
+                        *m = m.take().and_then(|m| (Some(m.on_worker_launched(WorkerLaunched::new(id, Pid::from_raw(pid as i32))))));
                     }
                     Ok(Ack{id}) => {
-                        machine = machine.on_worker_acked(WorkerAcked::new(id));
+                        *m = m.take().and_then(|m| (Some(m.on_worker_acked(WorkerAcked::new(id)))));
                     }
                 }
             }
         };
-        debug!("machine is now"; "machine" => ?machine);
     }
 }
 
@@ -139,6 +171,17 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
     };
     let terminations = reaper::setup_child_exit_handler()?;
 
+    let machine = Machine::new(WorkerSet::new(settings.worker));
+
     proc.as_mut().initialize().await?;
-    Ok(supervise(settings.worker, terminations, proc).await)
+    let health_server = health::healthcheck_server(machine.clone());
+    select! {
+        _ = supervise(machine, terminations, proc) => {
+            unreachable!("supervise never quits.");
+        }
+        res = health_server => {
+            crit!("healthcheck server terminated"; "result" => ?res);
+            unreachable!("the server should never terminate");
+        }
+    }
 }

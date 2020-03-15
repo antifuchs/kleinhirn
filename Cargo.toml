@@ -47,6 +47,7 @@ machine = "0.3.0"
 async-trait = "0.1.29"
 uuid = {version = "0.8.1", features = ["v4"] }
 prctl = "1.0.0"
+hyper = "0.13.3"
 
 [dev-dependencies]
 rusty-fork = "0.2.2"
