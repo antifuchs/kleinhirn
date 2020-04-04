@@ -115,14 +115,6 @@ jobs:
           name: bundle exec --gemfile=gems/kleinhirn_loader/Gemfile rake ci -f gems/kleinhirn_loader/Rakefile
           command: bundle exec --gemfile=gems/kleinhirn_loader/Gemfile rake ci -f gems/kleinhirn_loader/Rakefile
 
-  ci_success:
-    docker:
-      - image: alpine:latest
-    steps:
-      - run:
-          name: Success
-          command: "echo yay"
-
 workflows:
   continuous_integration:
     jobs:
@@ -190,13 +182,6 @@ workflows:
           name: "ruby_ci_kleinhirn_loader"
           version: ruby2_6
           version_name: ruby2_6
-      - ci_success:
-          requires:
-          - test-stable
-          - test-nightly
-          - rustfmt
-          - clippy
-          - ruby_ci_kleinhirn_loader
   scheduled_tests:
     jobs:
       - test:
