@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use nix::fcntl::{fcntl, FcntlArg};
 use nix::unistd::close;
 use serde::Deserialize;
+use std::fmt;
 use std::os::unix::io::AsRawFd;
 use tokio::io::BufStream;
 use tokio::net::UnixStream;
@@ -19,16 +20,6 @@ impl WorkerControlFD {
         Self(fd, true)
     }
 
-    /// Returns a base-10 representation of the worker control channel's FD number.
-    pub fn to_string(&self) -> String {
-        self.0.to_string()
-    }
-
-    /// Returns the worker control channel's FD as a raw FD.
-    pub unsafe fn into_inner(self) -> i32 {
-        self.0
-    }
-
     /// Closes our copy of the worker control channel. This must be
     /// called in order to prevent FD leaks. It is called as part of
     /// the destructor.
@@ -38,6 +29,12 @@ impl WorkerControlFD {
             self.1 = false;
         }
         Ok(())
+    }
+}
+
+impl fmt::Display for WorkerControlFD {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 
