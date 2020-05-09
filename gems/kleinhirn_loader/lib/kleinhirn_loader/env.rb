@@ -26,7 +26,7 @@ module KleinhirnLoader
         .void
     end
     def env=(value)
-      ENV[to_s] = value
+      ENV[serialize] = value
     end
 
     # Returns the corresponding environment variable
@@ -34,7 +34,7 @@ module KleinhirnLoader
       returns(T.nilable(String))
     end
     def env
-      ENV[to_s]
+      ENV[serialize]
     end
 
     # Unsets the environment variable.
@@ -42,7 +42,7 @@ module KleinhirnLoader
       void
     end
     def unset
-      ENV.delete(to_s)
+      ENV.delete(serialize)
     end
   end
 end

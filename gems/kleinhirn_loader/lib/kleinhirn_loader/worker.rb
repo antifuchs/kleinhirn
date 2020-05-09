@@ -1,6 +1,7 @@
 # typed: strict
 # frozen_string_literal: true
 
+require 'json'
 require 'kleinhirn_loader'
 require 'kleinhirn_loader/env'
 require 'kleinhirn_loader/replies'
