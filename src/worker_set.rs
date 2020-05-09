@@ -193,6 +193,17 @@ impl WorkerAcked {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct WorkerAckTimeout {
+    id: String,
+}
+
+impl WorkerAckTimeout {
+    pub fn new(id: String) -> Self {
+        Self { id }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Terminate();
 
 #[derive(Clone, Debug, PartialEq, Copy)]
@@ -204,6 +215,7 @@ transitions!(WorkerSet, [
     (Startup, WorkerRequested) => Startup,
     (Startup, WorkerLaunched) => Startup,
     (Startup, WorkerAcked) => [Running, Startup],
+    (Startup, WorkerAckTimeout) => Faulted,
     (Startup, WorkerDeath) => [Startup, Faulted],
     (Startup, MiserableCondition) => Faulted,
 
@@ -214,6 +226,7 @@ transitions!(WorkerSet, [
     (Underprovisioned, WorkerRequested) => Underprovisioned,
     (Underprovisioned, WorkerLaunched) => Underprovisioned,
     (Underprovisioned, WorkerAcked) => [Running, Underprovisioned],
+    (Underprovisioned, WorkerAckTimeout) => Faulted,
     (Underprovisioned, WorkerDeath) => [Underprovisioned, Faulted],
     (Underprovisioned, MiserableCondition) => Faulted
 ]);
@@ -261,6 +274,10 @@ impl Startup {
     fn on_worker_acked(self, s: WorkerAcked) -> WorkerSet {
         let state = self.state;
         state.handle_ack(s.id, WorkerSet::startup, WorkerSet::running)
+    }
+
+    fn on_worker_ack_timeout(self, t: WorkerAckTimeout) -> Faulted {
+        Faulted { state: self.state }
     }
 
     fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
@@ -315,6 +332,10 @@ impl Underprovisioned {
     fn on_worker_acked(self, s: WorkerAcked) -> WorkerSet {
         let state = self.state;
         state.handle_ack(s.id, WorkerSet::underprovisioned, WorkerSet::running)
+    }
+
+    fn on_worker_ack_timeout(self, t: WorkerAckTimeout) -> Faulted {
+        Faulted { state: self.state }
     }
 
     fn on_worker_death(self, d: WorkerDeath) -> WorkerSet {
