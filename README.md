@@ -1,4 +1,4 @@
-# kleinhirn - the 70% of Einhorn that are useful in a container context
+# kleinhirn - the 40% of Einhorn that are useful in a container context
 
 Kleinhirn is a preloading process supervisor with worker
 acknowledgement targeting Linux. It supports Ruby with preloading out
