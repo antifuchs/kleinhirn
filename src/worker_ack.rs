@@ -4,6 +4,7 @@
 use anyhow::{Context, Result};
 use nix::fcntl::{fcntl, FcntlArg};
 use nix::unistd::close;
+use serde::Deserialize;
 use std::os::unix::io::AsRawFd;
 use tokio::io::BufStream;
 use tokio::net::UnixStream;
@@ -59,4 +60,17 @@ pub fn worker_status_stream() -> Result<(WorkerControlFD, BufStream<UnixStream>)
     let socket = UnixStream::from_std(ours).context("unable to setup UNIX stream")?;
     let reader = BufStream::new(socket);
     Ok((WorkerControlFD::new(their_fd), reader))
+}
+
+/// The vocabulary of messages that any kind of process can send to
+/// Einhorn. This is a strict subset of the preloader message
+/// vocabulary.
+#[derive(PartialEq, Debug, Clone, Deserialize)]
+#[serde(tag = "action")]
+#[serde(rename_all = "snake_case")]
+pub enum WorkerControlMessage {
+    /// A worker process with the given ID has finished initializing
+    /// and is now able to do work. The `id` field must correspond to
+    /// the worker ID string given to the worker.
+    Ack { id: String },
 }

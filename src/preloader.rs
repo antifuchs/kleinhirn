@@ -1,5 +1,8 @@
 use self::machine::PreloaderState;
-use crate::process_control::{Message, ProcessControl};
+use crate::{
+    process_control::{Message, ProcessControl},
+    worker_ack::WorkerControlMessage,
+};
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -18,9 +21,20 @@ mod machine;
 mod linux;
 
 #[derive(PartialEq, Debug, Clone, Deserialize)]
-#[serde(tag = "action")]
+#[serde(untagged)]
 #[serde(rename_all = "snake_case")]
 pub enum PreloaderMessage {
+    /// Messages that pertain to worker control.
+    WorkerControl(WorkerControlMessage),
+
+    /// Messages from the preloader specifically.
+    Preloader(PreloaderSpecificMessage),
+}
+
+#[derive(PartialEq, Debug, Clone, Deserialize)]
+#[serde(tag = "action")]
+#[serde(rename_all = "snake_case")]
+pub enum PreloaderSpecificMessage {
     /// The preloader is loading a file
     Loading {
         /// Path of the file being loaded
@@ -41,9 +55,6 @@ pub enum PreloaderMessage {
 
     /// A worker process has been launched and is initializing.
     Launched { id: String, pid: u32 },
-
-    /// A worker process has finished initializing and is now running.
-    Ack { id: String },
 
     /// Some message that the preloader or worker wants us to log.
     Log {
@@ -129,9 +140,10 @@ impl ProcessControl for Preloader {
 
     async fn next_message(&mut self) -> Result<Message> {
         use PreloaderMessage::*;
+        use PreloaderSpecificMessage::*;
         match self.next_preloader_message().await? {
-            Launched { id, pid } => Ok(Message::Launched { id, pid }),
-            Ack { id } => Ok(Message::Ack { id }),
+            Preloader(Launched { id, pid }) => Ok(Message::Launched { id, pid }),
+            WorkerControl(WorkerControlMessage::Ack { id }) => Ok(Message::Ack { id }),
             msg => {
                 bail!("Unexpected preloader message {:?}", msg);
             }

@@ -1,20 +1,17 @@
 #![cfg(target_os = "linux")]
 
 use super::Preloader;
+use crate::worker_ack;
 use anyhow::{Context, Result};
-use nix::fcntl::{fcntl, FcntlArg};
-use nix::unistd::close;
 use slog_scope::debug;
-use std::{os::unix::io::AsRawFd, path::Path, process::Command};
-use tokio::io::BufStream;
-use tokio::net::UnixStream;
+use std::{path::Path, process::Command};
 
 impl Preloader {
     /// Constructs the ruby preloader, starts it and waits until the code is loaded.
     pub fn for_ruby(gemfile: &Path, load: &Path, start_expression: &str) -> Result<Preloader> {
         prctl::set_child_subreaper(true)
             .map_err(|code| anyhow::anyhow!("Unable to set subreaper status. Status {:?}", code))?;
-        (their_fd, control_channel) = worker_ack::worker_status_stream()?;
+        let (their_fd, control_channel) = worker_ack::worker_status_stream()?;
         let theirs_str = their_fd.to_string();
         let mut cmd = Command::new("bundle");
         cmd.args(&["exec", "--gemfile"])

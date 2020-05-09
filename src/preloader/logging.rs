@@ -1,4 +1,4 @@
-use super::LogLevel;
+use super::{LogLevel, PreloaderSpecificMessage};
 use crate::preloader::PreloaderMessage;
 use slog::{self, b, record_static};
 use std::collections::HashMap;
@@ -30,7 +30,7 @@ impl Into<slog::Level> for &LogLevel {
 /// Logs a message that came in from the preloader; if the message is
 /// not a log message, returns Some(that message).
 pub(super) fn translate_message(msg: PreloaderMessage) -> Option<PreloaderMessage> {
-    if let PreloaderMessage::Log { level, msg, kv } = msg {
+    if let PreloaderMessage::Preloader(PreloaderSpecificMessage::Log { level, msg, kv }) = msg {
         let rec_s = record_static!((&level).into(), "preloader");
         let mykv = DynKV(&kv);
         slog_scope::logger().log(&slog::Record::new(
