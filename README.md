@@ -5,6 +5,15 @@ acknowledgement targeting Linux. It supports Ruby with preloading out
 of the box, and can also run regular UNIX programs using plain
 fork/exec.
 
+## kleinhirn is (currently) unfinished!
+
+I don't recommend you run kleinhirn yet: There are some (glaring) gaps
+in its implementation for now. You can see them
+[here](https://github.com/antifuchs/kleinhirn/milestone/1).
+
+**Notably, some of the promises in this README are
+over-promises. Please check the issues link above.**
+
 ## Things kleinhirn doesn't do
 
 Not all the things einhorn does are useful in a container context (and
