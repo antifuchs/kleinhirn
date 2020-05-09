@@ -29,6 +29,7 @@ mod process_control;
 
 pub mod configuration;
 pub mod reaper;
+pub mod worker_ack;
 pub mod worker_set;
 
 #[derive(Clone)]
@@ -166,7 +167,9 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
         }
         configuration::WorkerKind::Program(p) => {
             info!("starting fork/exec program";
-                  "cmdline" => ?p.cmdline);
+                  "cwd" => ?p.cwd,
+                  "cmdline" => ?p.cmdline,
+            );
             Box::new(ForkExec::for_program(p)?)
         }
     };

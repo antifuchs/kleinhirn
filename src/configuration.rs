@@ -163,6 +163,9 @@ pub struct Program {
     pub cmdline: Vec<String>,
     pub env: HashMap<String, String>,
     pub cwd: Option<PathBuf>,
+
+    #[serde(default)]
+    pub ack_workers: bool,
 }
 
 #[derive(Deserialize)]

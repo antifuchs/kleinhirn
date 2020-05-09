@@ -1,4 +1,4 @@
-use super::PreloaderMessage;
+use super::{PreloaderMessage, PreloaderSpecificMessage};
 use machine::*;
 use slog_scope::{debug, error, warn};
 
@@ -19,8 +19,11 @@ transitions!(PreloaderState, [
 
 impl Starting {
     pub fn on_preloader_message(self, msg: PreloaderMessage) -> PreloaderState {
+        use PreloaderMessage::*;
+        use PreloaderSpecificMessage::*;
+
         match msg {
-            PreloaderMessage::Loading { file } => {
+            Preloader(Loading { file }) => {
                 debug!("loading"; "file" => ?file);
                 PreloaderState::loading()
             }
@@ -31,17 +34,20 @@ impl Starting {
 
 impl Loading {
     pub fn on_preloader_message(self, msg: PreloaderMessage) -> PreloaderState {
+        use PreloaderMessage::*;
+        use PreloaderSpecificMessage::*;
+
         match msg {
-            PreloaderMessage::Loading { .. } => PreloaderState::loading(),
-            PreloaderMessage::Ready => {
+            Preloader(Loading { .. }) => PreloaderState::loading(),
+            Preloader(Ready) => {
                 debug!("Preloader is ready");
                 PreloaderState::ready()
             }
-            PreloaderMessage::Error { message, error } => {
+            Preloader(Error { message, error }) => {
                 error!("Communication error with the preloader. This is a bug."; "message" => %message, "error" => ?error);
                 PreloaderState::failed()
             }
-            PreloaderMessage::Failed { id, message } => {
+            Preloader(Failed { id, message }) => {
                 warn!("Command failed"; "id" => id, "message" => %message);
                 PreloaderState::failed()
             }
