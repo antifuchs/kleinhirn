@@ -20,7 +20,7 @@ pub struct ForkExec {
 
 impl ForkExec {
     pub fn for_program(p: &configuration::Program) -> Result<ForkExec> {
-        // TODO: do some error checking
+        // TODO: do some error checking - validate that the program can be found and such?
         let (sender, receiver) = channel(20);
         Ok(ForkExec {
             program: p.clone(),

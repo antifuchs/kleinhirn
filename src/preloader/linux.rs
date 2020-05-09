@@ -14,13 +14,7 @@ impl Preloader {
     pub fn for_ruby(gemfile: &Path, load: &Path, start_expression: &str) -> Result<Preloader> {
         prctl::set_child_subreaper(true)
             .map_err(|code| anyhow::anyhow!("Unable to set subreaper status. Status {:?}", code))?;
-
-        let (ours, theirs) = std::os::unix::net::UnixStream::pair()
-            .context("Could not initialize preloader unix socket pair")?;
-        let their_fd = fcntl(theirs.as_raw_fd(), FcntlArg::F_DUPFD(theirs.as_raw_fd()))
-            .context("Could not clear CLOEXEC from the status pipe")?;
-        close(theirs.as_raw_fd()).context("closing the remote FD")?;
-
+        (their_fd, control_channel) = worker_ack::worker_status_stream()?;
         let theirs_str = their_fd.to_string();
         let mut cmd = Command::new("bundle");
         cmd.args(&["exec", "--gemfile"])
@@ -38,14 +32,10 @@ impl Preloader {
             .arg(load.as_os_str());
         debug!("running preloader"; "cmd" => ?cmd);
         let child = cmd.spawn().context("spawning kleinhirn_loader")?;
-        let socket = UnixStream::from_std(ours).context("unable to setup UNIX stream")?;
-        let reader = BufStream::new(socket);
         debug!("child running"; "pid" => ?child.id());
-        // close the socket we passed to our children:
-        close(their_fd).context("closing the dup'ed FD")?;
 
         Ok(Preloader {
-            control_channel: reader,
+            control_channel,
             pid: child.id(),
         })
     }

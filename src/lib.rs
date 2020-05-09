@@ -29,6 +29,7 @@ mod process_control;
 
 pub mod configuration;
 pub mod reaper;
+pub mod worker_ack;
 pub mod worker_set;
 
 #[derive(Clone)]
