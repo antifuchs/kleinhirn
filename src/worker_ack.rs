@@ -11,7 +11,7 @@ use tokio::net::UnixStream;
 
 /// Contains the worker's end of the control channel it uses to send
 /// ack messages to the supervisor process.
-#[derive(PartialEq, Clone, Eq)]
+#[derive(PartialEq, Clone, Debug, Eq)]
 pub struct WorkerControlFD(i32, bool);
 
 impl WorkerControlFD {
@@ -52,11 +52,15 @@ impl Drop for WorkerControlFD {
 /// worker, and returns the FD number of the writable end, and the
 /// readable end of the pair.
 pub fn worker_status_stream() -> Result<(WorkerControlFD, BufStream<UnixStream>)> {
-    let (ours, theirs) = std::os::unix::net::UnixStream::pair()
+    let (ours, theirs_with_cloexec) = std::os::unix::net::UnixStream::pair()
         .context("Could not initialize preloader unix socket pair")?;
-    let their_fd = fcntl(theirs.as_raw_fd(), FcntlArg::F_DUPFD(theirs.as_raw_fd()))
-        .context("Could not clear CLOEXEC from the status pipe")?;
-    close(theirs.as_raw_fd()).context("closing the remote FD")?;
+    let their_fd = fcntl(
+        theirs_with_cloexec.as_raw_fd(),
+        FcntlArg::F_DUPFD(theirs_with_cloexec.as_raw_fd()),
+    )
+    .context("Could not clear CLOEXEC from the status pipe")?;
+
+    close(theirs_with_cloexec.as_raw_fd()).context("closing the remote FD")?;
     let socket = UnixStream::from_std(ours).context("unable to setup UNIX stream")?;
     let reader = BufStream::new(socket);
     Ok((WorkerControlFD::new(their_fd), reader))
