@@ -15,11 +15,12 @@ use preloader::PreloaderDied;
 use process_control::{Message, ProcessControl};
 use reaper::Zombies;
 use slog::o;
-use slog_scope::{crit, debug, info};
+use slog_scope::{crit, debug, info, warn};
 use std::{convert::Infallible, sync::Arc};
 use tokio::select;
 use worker_set::{
-    MiserableCondition, Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested, WorkerSet,
+    MiserableCondition, Todo, WorkerAcked, WorkerDeath, WorkerLaunchFailure, WorkerLaunched,
+    WorkerRequested, WorkerSet,
 };
 
 mod fork_exec;
@@ -106,7 +107,12 @@ async fn supervise(
                             m.on_worker_requested(WorkerRequested::new(id.clone()))
                         });
                     }
-                    Err(e) => info!("failed to launch"; "error" => ?e),
+                    Err(e) => {
+                        machine.update(move |m| {
+                            m.on_worker_launch_failure(WorkerLaunchFailure::new(None))
+                        });
+                        warn!("failed to launch"; "error" => ?e);
+                    }
                 }
             }
         }
@@ -138,6 +144,16 @@ async fn supervise(
                     }
                     Ok(Ack{id}) => {
                         machine.update(move |m| m.on_worker_acked(WorkerAcked::new(id.clone())))
+                    }
+                    Ok(LaunchError{id, pid, error}) => {
+                        warn!("error launching worker";
+                              "worker_id" => ?id,
+                              "pid" => ?pid,
+                              "error" => ?error,
+                        );
+                        machine.update(move |m| {
+                            m.on_worker_launch_failure(WorkerLaunchFailure::new(Some(id.clone())))
+                        });
                     }
                 }
             }

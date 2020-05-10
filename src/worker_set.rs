@@ -193,12 +193,12 @@ impl WorkerAcked {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct WorkerAckTimeout {
-    id: String,
+pub struct WorkerLaunchFailure {
+    id: Option<String>,
 }
 
-impl WorkerAckTimeout {
-    pub fn new(id: String) -> Self {
+impl WorkerLaunchFailure {
+    pub fn new(id: Option<String>) -> Self {
         Self { id }
     }
 }
@@ -215,7 +215,7 @@ transitions!(WorkerSet, [
     (Startup, WorkerRequested) => Startup,
     (Startup, WorkerLaunched) => Startup,
     (Startup, WorkerAcked) => [Running, Startup],
-    (Startup, WorkerAckTimeout) => Faulted,
+    (Startup, WorkerLaunchFailure) => Faulted,
     (Startup, WorkerDeath) => [Startup, Faulted],
     (Startup, MiserableCondition) => Faulted,
 
@@ -226,7 +226,7 @@ transitions!(WorkerSet, [
     (Underprovisioned, WorkerRequested) => Underprovisioned,
     (Underprovisioned, WorkerLaunched) => Underprovisioned,
     (Underprovisioned, WorkerAcked) => [Running, Underprovisioned],
-    (Underprovisioned, WorkerAckTimeout) => Faulted,
+    (Underprovisioned, WorkerLaunchFailure) => Faulted,
     (Underprovisioned, WorkerDeath) => [Underprovisioned, Faulted],
     (Underprovisioned, MiserableCondition) => Faulted
 ]);
@@ -276,7 +276,8 @@ impl Startup {
         state.handle_ack(s.id, WorkerSet::startup, WorkerSet::running)
     }
 
-    fn on_worker_ack_timeout(self, t: WorkerAckTimeout) -> Faulted {
+    fn on_worker_launch_failure(self, _t: WorkerLaunchFailure) -> Faulted {
+        // TODO: mark worker as broken
         Faulted { state: self.state }
     }
 
@@ -334,7 +335,8 @@ impl Underprovisioned {
         state.handle_ack(s.id, WorkerSet::underprovisioned, WorkerSet::running)
     }
 
-    fn on_worker_ack_timeout(self, t: WorkerAckTimeout) -> Faulted {
+    fn on_worker_launch_failure(self, _t: WorkerLaunchFailure) -> Faulted {
+        // TODO: mark worker as broken
         Faulted { state: self.state }
     }
 
