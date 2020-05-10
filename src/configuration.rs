@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 #[derive(Deserialize)]
@@ -166,6 +167,9 @@ pub struct Program {
 
     #[serde(default)]
     pub ack_workers: bool,
+
+    #[serde(default)]
+    pub ack_timeout: Option<Duration>,
 }
 
 #[derive(Deserialize)]
