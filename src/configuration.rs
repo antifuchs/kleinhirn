@@ -1,4 +1,4 @@
-use futures::stream::empty;
+use futures::stream::pending;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::{
@@ -167,7 +167,7 @@ impl WorkerConfig {
         if let Some(timeout) = self.ack_timeout {
             Box::new(interval(timeout / 2))
         } else {
-            Box::new(empty())
+            Box::new(pending())
         }
     }
 }
