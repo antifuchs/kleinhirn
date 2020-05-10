@@ -77,10 +77,15 @@ async fn supervise(
     mut proc: Box<dyn ProcessControl>,
     mut ticker: Box<dyn Stream<Item = Instant> + std::marker::Unpin>,
 ) -> Infallible {
+    let mut known_broken = false;
     loop {
         if machine.interrogate(|m| m.working()).is_none() {
             // We're broken. Just reap children & wait quietly for the
             // sweet release of death.
+            if !known_broken {
+                warn!("The workers are in a faulty state! Marking self as unhealthy & reaping any workers that exit.");
+                known_broken = true;
+            }
             match zombies.reap().await {
                 Ok(pid) => info!("reaped child"; "pid" => ?pid),
                 Err(e) => info!("failed to reap"; "error" => ?e),

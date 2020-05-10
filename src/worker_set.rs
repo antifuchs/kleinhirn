@@ -86,7 +86,7 @@ impl State {
                     }
                 })
                 .collect();
-            if ack_timeouts.len() > 0 {
+            if !ack_timeouts.is_empty() {
                 warn!("timed out waiting for an ack from workers"; "workers" => ?ack_timeouts);
                 return WorkerSet::faulted(self);
             }
