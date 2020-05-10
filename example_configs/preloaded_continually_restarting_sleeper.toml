@@ -1,8 +1,16 @@
+[log]
+output = "stderr"
+level = "debug"
+
 [supervisor]
 name = "continually-restarting-sleeper"
 
+[health_check]
+listen_addr = "127.0.0.1:3000"
+
 [worker]
 count = 3
+#ack_timeout = "1s"
 type = "ruby"
 gemfile = "../gems/kleinhirn_loader/examples/sleeper_agent/Gemfile"
 load = "../gems/kleinhirn_loader/examples/sleeper_agent/sleeper_agent.rb"
