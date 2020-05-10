@@ -1,6 +1,7 @@
 use crate::configuration::WorkerConfig;
 use machine::*;
 use nix::unistd::Pid;
+use slog_scope::warn;
 use std::{collections::HashMap, fmt, time::Instant};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -70,6 +71,29 @@ pub struct State {
 }
 
 impl State {
+    /// Checks if any workers that aren't acked yet, whose acks have
+    /// timed out by the tick.
+    fn tick(self, time: Instant, ok_state: fn(Self) -> WorkerSet) -> WorkerSet {
+        if let Some(timeout) = self.config.ack_timeout {
+            let ack_timeouts: Vec<&Worker> = self
+                .workers
+                .all()
+                .filter(|w| {
+                    if let Some(launched) = w.launched {
+                        w.acked.is_none() && launched + timeout < time
+                    } else {
+                        false
+                    }
+                })
+                .collect();
+            if ack_timeouts.len() > 0 {
+                warn!("timed out waiting for an ack from workers"; "workers" => ?ack_timeouts);
+                return WorkerSet::faulted(self);
+            }
+        }
+        ok_state(self)
+    }
+
     fn handle_ack<T>(
         mut self,
         id: String,
@@ -211,21 +235,34 @@ pub enum MiserableCondition {
     PreloaderDied,
 }
 
+/// A timer tick (typically half the ack timeout) has come in.
+#[derive(Clone, Debug, PartialEq, Copy)]
+pub struct Tick(Instant);
+
+impl Tick {
+    pub fn new(i: impl Into<Instant>) -> Self {
+        Self(i.into())
+    }
+}
+
 transitions!(WorkerSet, [
     (Startup, WorkerRequested) => Startup,
     (Startup, WorkerLaunched) => Startup,
     (Startup, WorkerAcked) => [Running, Startup],
+    (Startup, Tick) => [Startup, Faulted],
     (Startup, WorkerLaunchFailure) => Faulted,
     (Startup, WorkerDeath) => [Startup, Faulted],
     (Startup, MiserableCondition) => Faulted,
 
     (Running, WorkerDeath) => [Running, Underprovisioned],
     (Running, WorkerAcked) => Running,
+    (Running, Tick) => [Running, Faulted],
     (Running, MiserableCondition) => Faulted,
 
     (Underprovisioned, WorkerRequested) => Underprovisioned,
     (Underprovisioned, WorkerLaunched) => Underprovisioned,
     (Underprovisioned, WorkerAcked) => [Running, Underprovisioned],
+    (Underprovisioned, Tick) => [Underprovisioned, Faulted],
     (Underprovisioned, WorkerLaunchFailure) => Faulted,
     (Underprovisioned, WorkerDeath) => [Underprovisioned, Faulted],
     (Underprovisioned, MiserableCondition) => Faulted
@@ -239,6 +276,11 @@ impl Running {
         } else {
             WorkerSet::running(state)
         }
+    }
+
+    fn on_tick(self, s: Tick) -> WorkerSet {
+        let state = self.state;
+        state.tick(s.0, WorkerSet::running)
     }
 
     fn on_worker_acked(self, s: WorkerAcked) -> Running {
@@ -269,6 +311,11 @@ impl Startup {
         state.workers.launched(r.id, r.pid);
 
         Startup { state }
+    }
+
+    fn on_tick(self, s: Tick) -> WorkerSet {
+        let state = self.state;
+        state.tick(s.0, WorkerSet::startup)
     }
 
     fn on_worker_acked(self, s: WorkerAcked) -> WorkerSet {
@@ -328,6 +375,11 @@ impl Underprovisioned {
         state.workers.launched(r.id, r.pid);
 
         Underprovisioned { state }
+    }
+
+    fn on_tick(self, s: Tick) -> WorkerSet {
+        let state = self.state;
+        state.tick(s.0, WorkerSet::underprovisioned)
     }
 
     fn on_worker_acked(self, s: WorkerAcked) -> WorkerSet {

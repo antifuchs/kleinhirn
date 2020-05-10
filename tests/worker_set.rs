@@ -1,9 +1,10 @@
 use kleinhirn::configuration;
 use kleinhirn::worker_set::{
-    Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested, WorkerSet,
+    Tick, Todo, WorkerAcked, WorkerDeath, WorkerLaunched, WorkerRequested, WorkerSet,
 };
 use matches::assert_matches;
 use nix::unistd::Pid;
+use std::time::{Duration, Instant};
 
 #[must_use]
 fn ack_n_workers(mut machine: WorkerSet, from: usize, n: usize) -> WorkerSet {
@@ -31,6 +32,7 @@ fn ack_n_workers(mut machine: WorkerSet, from: usize, n: usize) -> WorkerSet {
 fn starts_workers_until_done() {
     let config = configuration::WorkerConfig {
         count: 3,
+        ack_timeout: None,
         kind: configuration::WorkerKind::Program(configuration::Program {
             cmdline: vec!["/bin/true".to_string()],
             ..Default::default()
@@ -54,6 +56,7 @@ fn starts_workers_until_done() {
 fn keeps_them_running() {
     let config = configuration::WorkerConfig {
         count: 3,
+        ack_timeout: None,
         kind: configuration::WorkerKind::Program(configuration::Program {
             cmdline: vec!["/bin/true".to_string()],
             ..Default::default()
@@ -76,6 +79,7 @@ fn keeps_them_running() {
 fn no_problems_with_unrelated_pids() {
     let config = configuration::WorkerConfig {
         count: 3,
+        ack_timeout: None,
         kind: configuration::WorkerKind::Program(configuration::Program {
             cmdline: vec!["/bin/true".to_string()],
             ..Default::default()
@@ -86,4 +90,28 @@ fn no_problems_with_unrelated_pids() {
     // kill the second worker:
     machine = machine.on_worker_death(WorkerDeath::new(Pid::from_raw(90)));
     assert_matches!(&machine, &WorkerSet::Running(_));
+}
+
+#[test]
+fn ack_timeouts() {
+    let config = configuration::WorkerConfig {
+        count: 1,
+        ack_timeout: Some(Duration::from_secs(1)),
+        kind: configuration::WorkerKind::Program(configuration::Program {
+            cmdline: vec!["/bin/true".to_string()],
+            ..Default::default()
+        }),
+    };
+    let mut machine = WorkerSet::new(config);
+    let id = "a".to_string();
+    // record a worker as launched:
+    let now = Instant::now();
+    machine = machine.on_worker_requested(WorkerRequested::new(id.clone()));
+    machine = machine.on_worker_launched(WorkerLaunched::new(id.clone(), Pid::from_raw(1)));
+    let post_launch = Instant::now();
+    machine = machine.on_tick(Tick::new(now)); // This is fine
+    assert_matches!(&machine, &WorkerSet::Startup(_));
+
+    machine = machine.on_tick(Tick::new(post_launch + Duration::from_millis(1001))); // Now it's too late
+    assert_matches!(&machine, &WorkerSet::Faulted(_));
 }

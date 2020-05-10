@@ -1,9 +1,14 @@
+use futures::stream::empty;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
     time::Duration,
+};
+use tokio::{
+    stream::Stream,
+    time::{interval, Instant},
 };
 
 #[derive(Deserialize)]
@@ -151,6 +156,20 @@ pub struct WorkerConfig {
 
     #[serde(flatten)]
     pub kind: WorkerKind,
+
+    #[serde(default)]
+    #[serde(with = "humantime_serde")]
+    pub ack_timeout: Option<Duration>,
+}
+
+impl WorkerConfig {
+    pub fn ack_ticker(&self) -> Box<dyn Stream<Item = Instant> + Unpin> {
+        if let Some(timeout) = self.ack_timeout {
+            Box::new(interval(timeout / 2))
+        } else {
+            Box::new(empty())
+        }
+    }
 }
 
 fn default_count() -> usize {
@@ -167,9 +186,6 @@ pub struct Program {
 
     #[serde(default)]
     pub ack_workers: bool,
-
-    #[serde(default)]
-    pub ack_timeout: Option<Duration>,
 }
 
 #[derive(Deserialize)]

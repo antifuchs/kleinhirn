@@ -1,6 +1,7 @@
 [log]
 output = "stderr"
 level = "debug"
+format = { format = "json" }
 
 [supervisor]
 name = "continually-restarting-sleeper"
@@ -14,4 +15,5 @@ type = "program"
 cmdline = ["bundle", "exec", "--gemfile", "gems/kleinhirn_loader/examples/sleeper_agent/Gemfile", "--keep-file-descriptors",
            "ruby", "gems/kleinhirn_loader/examples/sleeper_agent/sleeper_agent.rb"]
 ack_workers = true
+ack_timeout = "400ms"
 env = {}

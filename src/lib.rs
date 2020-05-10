@@ -5,7 +5,7 @@
 
 use anyhow::{anyhow, Result};
 use fork_exec::ForkExec;
-use futures::future::FutureExt;
+use futures::{future::FutureExt, Stream, StreamExt};
 use health::{HealthIndicator, State};
 use nix::unistd::Pid;
 use parking_lot::Mutex;
@@ -17,9 +17,9 @@ use reaper::Zombies;
 use slog::o;
 use slog_scope::{crit, debug, info, warn};
 use std::{convert::Infallible, sync::Arc};
-use tokio::select;
+use tokio::{select, time::Instant};
 use worker_set::{
-    MiserableCondition, Todo, WorkerAcked, WorkerDeath, WorkerLaunchFailure, WorkerLaunched,
+    MiserableCondition, Tick, Todo, WorkerAcked, WorkerDeath, WorkerLaunchFailure, WorkerLaunched,
     WorkerRequested, WorkerSet,
 };
 
@@ -74,8 +74,8 @@ impl HealthIndicator for Machine {
 async fn supervise(
     machine: Machine,
     mut zombies: Zombies,
-    // TODO: uh, I need to make this generic enough for the fork/exec method.
     mut proc: Box<dyn ProcessControl>,
+    mut ticker: Box<dyn Stream<Item = Instant> + std::marker::Unpin>,
 ) -> Infallible {
     loop {
         if machine.interrogate(|m| m.working()).is_none() {
@@ -119,6 +119,11 @@ async fn supervise(
 
         // Read events off the environment:
         select! {
+            tick = ticker.next() => {
+                if let Some(tick) = tick {
+                    machine.update(|m| m.on_tick(Tick::new(tick)));
+                }
+            }
             // TODO: check the preloader PID also - could be that the
             // control pipe is held open by a broken child.
             res = zombies.reap().fuse() => {
@@ -169,6 +174,7 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
         slog_scope::logger().new(o!("service" => settings.supervisor.name.to_string())),
     );
 
+    let ticker = settings.worker.ack_ticker();
     let mut proc: Box<dyn ProcessControl> = match &settings.worker.kind {
         #[cfg(target_os = "linux")]
         configuration::WorkerKind::Ruby(rb) => {
@@ -196,7 +202,7 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
     proc.as_mut().initialize().await?;
     let health_server = health::healthcheck_server(settings.health_check, machine.clone());
     select! {
-        _ = supervise(machine, terminations, proc) => {
+        _ = supervise(machine, terminations, proc, ticker) => {
             unreachable!("supervise never quits.");
         }
         res = health_server => {
