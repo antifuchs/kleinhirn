@@ -89,6 +89,12 @@ pub struct Preloader {
 #[error("preloader process has died")]
 pub struct PreloaderDied;
 
+#[derive(Error, Debug, PartialEq)]
+#[error("preloader failed to launch a child worker: {message}")]
+pub struct PreloaderLaunchFailure {
+    message: String,
+}
+
 impl Preloader {
     async fn send_message(&mut self, msg: &PreloaderRequest) -> Result<()> {
         let mut msg = serde_json::to_vec(msg)?;
@@ -143,6 +149,11 @@ impl ProcessControl for Preloader {
         use PreloaderSpecificMessage::*;
         match self.next_preloader_message().await? {
             Preloader(Launched { id, pid }) => Ok(Message::Launched { id, pid }),
+            Preloader(Failed { id, message }) => Ok(Message::LaunchError {
+                id,
+                error: PreloaderLaunchFailure { message }.into(),
+                pid: None,
+            }),
             WorkerControl(WorkerControlMessage::Ack { id }) => Ok(Message::Ack { id }),
             msg => {
                 bail!("Unexpected preloader message {:?}", msg);

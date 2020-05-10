@@ -4,10 +4,20 @@ use uuid::Uuid;
 
 /// A message that updates the supervisor on the state of a child
 /// process.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub enum Message {
-    Launched { id: String, pid: u32 },
-    Ack { id: String },
+    Launched {
+        id: String,
+        pid: u32,
+    },
+    Ack {
+        id: String,
+    },
+    LaunchError {
+        id: String,
+        pid: Option<u32>,
+        error: anyhow::Error,
+    },
 }
 
 #[async_trait]
