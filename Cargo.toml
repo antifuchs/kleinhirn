@@ -42,7 +42,7 @@ slog-logfmt = "0.1.0"
 slog-json = "2.3.0"
 slog-async = "2.5.0"
 slog-scope = "4.3.0"
-tokio = {version = "0.2.16", features = ["io-util", "uds", "time", "rt-core", "macros", "sync", "stream"] }
+smol = "0.1.18"
 machine = "0.3.0"
 async-trait = "0.1.29"
 uuid = {version = "0.8.1", features = ["v4"] }
