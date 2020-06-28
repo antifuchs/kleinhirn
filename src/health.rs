@@ -1,8 +1,11 @@
+mod smol_hyper;
+
 use crate::configuration;
+use anyhow::Result;
 use futures::future::pending;
 use hyper::{
     service::{make_service_fn, service_fn},
-    Body, Method, Response, Server, StatusCode,
+    Body, Method, Response, StatusCode,
 };
 use slog_scope::info;
 use std::{convert::Infallible, sync::Arc};
@@ -10,7 +13,7 @@ use std::{convert::Infallible, sync::Arc};
 pub(crate) async fn healthcheck_server(
     config: configuration::HealthConfig,
     indicator: impl HealthIndicator + Clone + Send + Sync + 'static,
-) -> hyper::Result<()> {
+) -> Result<()> {
     if let Some(addr) = config.listen_addr {
         let endpoint = Arc::new(config.endpoint.clone());
         let svc = make_service_fn(move |_conn| {
@@ -33,9 +36,9 @@ pub(crate) async fn healthcheck_server(
                 }))
             }
         });
-        let server = Server::bind(&addr).serve(svc);
+        let server = smol_hyper::server(&addr)?.serve(svc);
         info!("health probe service listening"; "addr" => ?&addr, "endpoint" => config.endpoint);
-        server.await
+        Ok(server.await?)
     } else {
         pending().await
     }
