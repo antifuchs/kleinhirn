@@ -4,14 +4,13 @@ use crate::{
     worker_ack,
 };
 use anyhow::{bail, Context, Result};
+use async_channel::{bounded, Receiver, Sender};
 use async_trait::async_trait;
+use futures::io::AsyncBufReadExt;
 use slog_scope::debug;
 use std::env::current_dir;
 use std::{collections::HashMap, process::Command};
 use thiserror::Error;
-use tokio::io::{AsyncBufReadExt, BufStream};
-use tokio::net::UnixStream;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
 use worker_ack::WorkerControlMessage;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -33,7 +32,7 @@ pub struct WorkerDied;
 impl ForkExec {
     pub fn for_program(p: &configuration::Program) -> Result<ForkExec> {
         // TODO: do some error checking - validate that the program can be found and such?
-        let (sender, receiver) = channel(20);
+        let (sender, receiver) = bounded(20);
         Ok(ForkExec {
             program: p.clone(),
             sender,
@@ -45,7 +44,7 @@ impl ForkExec {
     /// message is received, returns the acked ID.
     async fn receive_control_channel_ack(
         &self,
-        mut control_channel: BufStream<UnixStream>,
+        mut control_channel: worker_ack::ControlChannel,
     ) -> Result<String> {
         let mut line = String::new();
         let count = control_channel.read_line(&mut line).await?;
@@ -118,12 +117,14 @@ impl ProcessControl for ForkExec {
     }
 
     async fn next_message(&mut self) -> Result<Message> {
-        match self.receiver.recv().await {
-            Some(Action::Fork(id, pid)) => Ok(Message::Launched { id, pid }),
-            Some(Action::Ack(id)) => Ok(Message::Ack { id }),
-            None => {
-                bail!("fork_exec control channel got closed for some reason?");
-            }
+        match self
+            .receiver
+            .recv()
+            .await
+            .context("fork_exec control channel got closed for some reason?")?
+        {
+            Action::Fork(id, pid) => Ok(Message::Launched { id, pid }),
+            Action::Ack(id) => Ok(Message::Ack { id }),
         }
     }
 }

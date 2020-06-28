@@ -3,8 +3,11 @@
 //! This is the "root" process of the kleinhirn process hierarchy. It listens for external
 //! commands, spawns the configured number of workers and supervises them.
 
+#![recursion_limit = "2048"] // select! needs a higher recursion limit /:
+
 use anyhow::{anyhow, Result};
 use fork_exec::ForkExec;
+use futures::select;
 use futures::{future::FutureExt, Stream, StreamExt};
 use health::{HealthIndicator, State};
 use nix::unistd::Pid;
@@ -16,8 +19,7 @@ use process_control::{Message, ProcessControl};
 use reaper::Zombies;
 use slog::o;
 use slog_scope::{crit, debug, info, warn};
-use std::{convert::Infallible, sync::Arc};
-use tokio::{select, time::Instant};
+use std::{convert::Infallible, sync::Arc, time::Instant};
 use worker_set::{
     MiserableCondition, Tick, Todo, WorkerAcked, WorkerDeath, WorkerLaunchFailure, WorkerLaunched,
     WorkerRequested, WorkerSet,
@@ -75,9 +77,11 @@ async fn supervise(
     machine: Machine,
     mut zombies: Zombies,
     mut proc: Box<dyn ProcessControl>,
-    mut ticker: Box<dyn Stream<Item = Instant> + std::marker::Unpin>,
+    ticker: Box<dyn Stream<Item = Instant> + std::marker::Unpin>,
 ) -> Infallible {
     let mut known_broken = false;
+    let mut ticker = ticker.fuse();
+
     loop {
         if machine.interrogate(|m| m.working()).is_none() {
             // We're broken. Just reap children & wait quietly for the
@@ -207,10 +211,10 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
     proc.as_mut().initialize().await?;
     let health_server = health::healthcheck_server(settings.health_check, machine.clone());
     select! {
-        _ = supervise(machine, terminations, proc, ticker) => {
+        _ = supervise(machine, terminations, proc, ticker).fuse() => {
             unreachable!("supervise never quits.");
         }
-        res = health_server => {
+        res = health_server.fuse() => {
             crit!("healthcheck server terminated"; "result" => ?res);
             unreachable!("the server should never terminate");
         }

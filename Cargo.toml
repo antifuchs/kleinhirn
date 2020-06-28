@@ -49,6 +49,8 @@ uuid = {version = "0.8.1", features = ["v4"] }
 prctl = "1.0.0"
 hyper = "0.13.3"
 humantime-serde = "1.0.0"
+futures-ticker = "0.0.1"
+async-channel = "1.1.1"
 
 [dev-dependencies]
 rusty-fork = "0.2.2"

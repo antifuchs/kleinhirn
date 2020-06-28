@@ -3,9 +3,8 @@ use kleinhirn::reaper::*;
 use nix::unistd::Pid;
 use rusty_fork::*;
 use slog_scope::info;
+use smol::{self, Timer};
 use std::time::Duration;
-use tokio::runtime::Runtime;
-use tokio::time::delay_for;
 
 fn fork_child() -> Result<Pid> {
     use nix::unistd::{fork, ForkResult};
@@ -27,21 +26,20 @@ fn fork_child() -> Result<Pid> {
 rusty_fork_test! {
     #[test]
     fn returns_all_children() {
-        let mut rt = Runtime::new().expect("failed to setup runtime");
         let pid = fork_child().expect("0th fork");
-        rt.block_on(async {
+        smol::run(async {
             let mut zombies = setup_child_exit_handler().expect("Should be able to setup");
 
             let child = zombies.reap().await.expect("end of stream");
             assert_eq!(child, pid);
 
             let pid = fork_child().expect("first fork");
-            delay_for(Duration::from_millis(100)).await; // XXX: not ideal that we're testing by sleep, but ugh.
+            Timer::after(Duration::from_millis(100)).await; // XXX: not ideal that we're testing by sleep, but ugh.
             let child = zombies.reap().await.expect("end of stream");
             assert_eq!(child, pid);
 
             let pid = fork_child().expect("2nd fork");
-            delay_for(Duration::from_millis(100)).await;
+            Timer::after(Duration::from_millis(100)).await;
             let child = zombies.reap().await.expect("end of stream");
             assert_eq!(child, pid);
         });

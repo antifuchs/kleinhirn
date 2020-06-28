@@ -1,18 +1,17 @@
 use self::machine::PreloaderState;
 use crate::{
     process_control::{Message, ProcessControl},
-    worker_ack::WorkerControlMessage,
+    worker_ack::{ControlChannel, WorkerControlMessage},
 };
 use anyhow::{bail, Result};
 use async_trait::async_trait;
+use futures::io::{AsyncBufReadExt, AsyncWriteExt};
 use serde::{Deserialize, Serialize};
 use slog_scope::debug;
 use slog_scope::info;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use thiserror::Error;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufStream};
-use tokio::net::UnixStream;
 
 mod logging;
 mod machine;
@@ -81,7 +80,7 @@ enum PreloaderRequest {
 
 #[derive(Debug)]
 pub struct Preloader {
-    control_channel: BufStream<UnixStream>,
+    control_channel: ControlChannel,
     pid: u32,
 }
 

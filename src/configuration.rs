@@ -1,14 +1,11 @@
-use futures::stream::pending;
+use futures::stream::{pending, Stream};
+use futures_ticker::Ticker;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::{
+    collections::HashMap,
     net::SocketAddr,
     path::{Path, PathBuf},
-    time::Duration,
-};
-use tokio::{
-    stream::Stream,
-    time::{interval, Instant},
+    time::{Duration, Instant},
 };
 
 #[derive(Deserialize)]
@@ -165,7 +162,7 @@ pub struct WorkerConfig {
 impl WorkerConfig {
     pub fn ack_ticker(&self) -> Box<dyn Stream<Item = Instant> + Unpin> {
         if let Some(timeout) = self.ack_timeout {
-            Box::new(interval(timeout / 2))
+            Box::new(Ticker::new(timeout / 2))
         } else {
             Box::new(pending())
         }
