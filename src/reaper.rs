@@ -11,10 +11,12 @@ use std::{io::Read, os::unix::net::UnixStream};
 /// returned in a stream.
 pub fn setup_child_exit_handler() -> Result<Zombies> {
     let (read, write) =
-        Async::<UnixStream>::pair().context("Could not initialize signal handler socket pair")?;
+        UnixStream::pair().context("Could not initialize signal handler socket pair")?;
     signal_hook::pipe::register(signal_hook::SIGCHLD, write)
         .context("registering sigchld handler")?;
-    Ok(Zombies { socket: read })
+    Ok(Zombies {
+        socket: Async::new(read)?,
+    })
 }
 
 pub struct Zombies {
@@ -50,7 +52,10 @@ impl Zombies {
             // No processes are ready to be reaped, schedule us to get
             // woken up when the next one terminates:
             let mut buf = vec![0u8; 256];
-            self.socket.read_with_mut(|io| io.read(&mut buf)).await?;
+            self.socket
+                .read_with_mut(|io| io.read(&mut buf))
+                .await
+                .context("Failed to read from zombie notification pipe")?;
         }
     }
 }
