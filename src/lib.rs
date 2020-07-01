@@ -183,6 +183,9 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
         slog_scope::logger().new(o!("service" => settings.supervisor.name.to_string())),
     );
 
+    let terminations =
+        reaper::setup_child_exit_handler().context("Could not set up child exit handler")?;
+
     let ticker = settings.worker.ack_ticker();
     let mut proc: Box<dyn ProcessControl> = match &settings.worker.kind {
         #[cfg(target_os = "linux")]
@@ -207,7 +210,6 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
             Box::new(ForkExec::for_program(p).context("Failed to spawn the program")?)
         }
     };
-    let terminations = reaper::setup_child_exit_handler()?;
 
     let machine = Machine::new(WorkerSet::new(settings.worker));
 
