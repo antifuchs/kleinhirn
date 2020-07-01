@@ -47,8 +47,9 @@ machine = "0.3.0"
 async-trait = "0.1.29"
 uuid = {version = "0.8.1", features = ["v4"] }
 prctl = "1.0.0"
-hyper = { version = "0.13.6", default-features = false, features = ["stream"] }
-tokio = { version = "0.2", default-features = false }
+async-dup = "1.0.1"
+http = "0.2.1"
+tophat = {version = "0.2.1"}
 humantime-serde = "1.0.0"
 futures-ticker = "0.0.1"
 async-channel = "1.1.1"

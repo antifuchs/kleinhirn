@@ -1,14 +1,12 @@
-mod smol_hyper;
-
 use crate::configuration;
-use anyhow::Result;
+use anyhow::{Context, Result};
+use async_dup::Arc;
 use futures::future::pending;
-use hyper::{
-    service::{make_service_fn, service_fn},
-    Body, Method, Response, StatusCode,
-};
-use slog_scope::info;
-use std::{convert::Infallible, sync::Arc};
+use http::{response::Response, Method, StatusCode};
+use slog_scope::warn;
+use smol::{Async, Task};
+use std::net::TcpListener;
+use tophat::{server::accept, Body};
 
 pub(crate) async fn healthcheck_server(
     config: configuration::HealthConfig,
@@ -16,29 +14,38 @@ pub(crate) async fn healthcheck_server(
 ) -> Result<()> {
     if let Some(addr) = config.listen_addr {
         let endpoint = Arc::new(config.endpoint.clone());
-        let svc = make_service_fn(move |_conn| {
+        let listener = Async::<TcpListener>::bind(addr)
+            .context("Couldn't listen on HTTP healthcheck address")?;
+
+        loop {
+            let (stream, _) = listener.accept().await?;
             let indicator = indicator.clone();
+            let stream = Arc::new(stream);
             let endpoint = endpoint.clone();
-            async move {
-                // service_fn converts our function into a `Service`
-                Ok::<_, Infallible>(service_fn(move |req| {
-                    let response = indicator.health_check().response();
-                    let endpoint = endpoint.clone();
-                    async move {
-                        match (req.method(), req.uri().path()) {
-                            (&Method::GET, path) if path == *endpoint => response,
-                            _ => Ok(Response::builder()
-                                .status(StatusCode::NOT_FOUND)
-                                .body(Body::from("not found\n"))
-                                .unwrap()),
+            let task = Task::spawn(async move {
+                let indicator = indicator.clone();
+                let endpoint = endpoint.clone();
+                let serve = accept(stream, |req, mut resp_wtr| async {
+                    let req = Arc::new(req);
+                    match (req.method(), req.uri().path()) {
+                        (&Method::GET, path) if path == *endpoint => {
+                            *resp_wtr.response_mut() = indicator.health_check().response();
+                        }
+                        _ => {
+                            resp_wtr.set_status(StatusCode::NOT_FOUND);
                         }
                     }
-                }))
-            }
-        });
-        let server = smol_hyper::server(&addr)?.serve(svc);
-        info!("health probe service listening"; "addr" => ?&addr, "endpoint" => config.endpoint);
-        Ok(server.await?)
+                    resp_wtr.send().await
+                })
+                .await;
+
+                if let Err(err) = serve {
+                    warn!("Error serving healthcheck request"; "err" => ?err);
+                }
+            });
+
+            task.detach();
+        }
     } else {
         pending().await
     }
@@ -54,7 +61,7 @@ pub(crate) enum State {
 }
 
 impl State {
-    fn response(&self) -> Result<Response<Body>, hyper::http::Error> {
+    fn response(&self) -> Response<Body> {
         use State::*;
         Response::builder()
             .status(match self {
@@ -64,6 +71,13 @@ impl State {
             .body(match self {
                 Healthy => Body::from("ok\n"),
                 Unhealthy(e) => Body::from(format!("unhealthy: {:?}\n", e)),
+            })
+            .unwrap_or_else(|_e| {
+                let mut res = Response::new(Body::from(
+                    "Failed to create response. This is a kleinhirn bug.",
+                ));
+                *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                res
             })
     }
 }
