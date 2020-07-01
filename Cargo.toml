@@ -55,5 +55,4 @@ async-channel = "1.1.1"
 
 [dev-dependencies]
 rusty-fork = "0.2.2"
-faux = "0.0.4"
 matches = "0.1.8"
