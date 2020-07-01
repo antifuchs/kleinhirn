@@ -3,14 +3,14 @@ use crate::{
     process_control::{Message, ProcessControl},
     worker_ack::{ControlChannel, WorkerControlMessage},
 };
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use futures::io::{AsyncBufReadExt, AsyncWriteExt};
 use serde::{Deserialize, Serialize};
 use slog_scope::debug;
 use slog_scope::info;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 use thiserror::Error;
 
 mod logging;
@@ -99,8 +99,15 @@ impl Preloader {
         let mut msg = serde_json::to_vec(msg)?;
         info!("sending"; "msg" => String::from_utf8(msg.clone()).unwrap());
         msg.push(b'\n');
-        self.control_channel.write_all(&msg).await?;
-        self.control_channel.flush().await?;
+        Duration::from_secs(0);
+        self.control_channel
+            .write_all(&msg)
+            .await
+            .context("Failed to send control message")?;
+        self.control_channel
+            .flush()
+            .await
+            .context("Could not flush control channel")?;
         Ok(())
     }
 

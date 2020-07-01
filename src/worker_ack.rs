@@ -64,7 +64,9 @@ pub fn worker_status_stream() -> Result<(WorkerControlFD, ControlChannel)> {
     close(theirs_with_cloexec.as_raw_fd()).context("closing the remote FD")?;
     Ok((
         WorkerControlFD::new(their_fd),
-        BufWriter::new(BufReader::new(Async::new(ours)?)),
+        BufWriter::new(BufReader::new(
+            Async::new(ours).context("Could not convert our FD to async")?,
+        )),
     ))
 }
 

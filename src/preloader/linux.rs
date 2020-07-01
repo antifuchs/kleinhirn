@@ -11,7 +11,8 @@ impl Preloader {
     pub fn for_ruby(gemfile: &Path, load: &Path, start_expression: &str) -> Result<Preloader> {
         prctl::set_child_subreaper(true)
             .map_err(|code| anyhow::anyhow!("Unable to set subreaper status. Status {:?}", code))?;
-        let (their_fd, control_channel) = worker_ack::worker_status_stream()?;
+        let (their_fd, control_channel) = worker_ack::worker_status_stream()
+            .context("Failed to make a preloader control channel")?;
         let theirs_str = their_fd.to_string();
         let mut cmd = Command::new("bundle");
         cmd.args(&["exec", "--gemfile"])

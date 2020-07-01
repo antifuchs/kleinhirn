@@ -5,7 +5,7 @@
 
 #![recursion_limit = "2048"] // select! needs a higher recursion limit /:
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use fork_exec::ForkExec;
 use futures::select;
 use futures::{future::FutureExt, Stream, StreamExt};
@@ -194,14 +194,17 @@ pub async fn run(settings: configuration::Config) -> Result<Infallible> {
                   "load" => ?load,
                   "start_expression" => &rb.start_expression,
             );
-            Box::new(Preloader::for_ruby(&gemfile, &load, &rb.start_expression)?)
+            Box::new(
+                Preloader::for_ruby(&gemfile, &load, &rb.start_expression)
+                    .context("Failed to spawn the preloader")?,
+            )
         }
         configuration::WorkerKind::Program(p) => {
             info!("starting fork/exec program";
                   "cwd" => ?p.cwd,
                   "cmdline" => ?p.cmdline,
             );
-            Box::new(ForkExec::for_program(p)?)
+            Box::new(ForkExec::for_program(p).context("Failed to spawn the program")?)
         }
     };
     let terminations = reaper::setup_child_exit_handler()?;
