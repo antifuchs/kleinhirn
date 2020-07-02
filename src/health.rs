@@ -72,13 +72,7 @@ impl State {
                 Healthy => Body::from("ok\n"),
                 Unhealthy(e) => Body::from(format!("unhealthy: {:?}\n", e)),
             })
-            .unwrap_or_else(|_e| {
-                let mut res = Response::new(Body::from(
-                    "Failed to create response. This is a kleinhirn bug.",
-                ));
-                *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                res
-            })
+            .unwrap() // a technicality: The above can't fail.
     }
 }
 
