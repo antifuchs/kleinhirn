@@ -49,7 +49,7 @@ uuid = {version = "0.8.1", features = ["v4"] }
 prctl = "1.0.0"
 async-dup = "1.0.1"
 http = "0.2.1"
-tophat = {version = "0.2.1"}
+tophat = {version = "0.2.1", features = ["router"]}
 humantime-serde = "1.0.0"
 futures-ticker = "0.0.1"
 async-channel = "1.1.1"

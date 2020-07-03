@@ -1,41 +1,63 @@
 use crate::configuration;
 use anyhow::{Context, Result};
 use async_dup::Arc;
-use futures::future::pending;
+use futures::{future::pending, AsyncRead, AsyncWrite};
 use http::{response::Response, Method, StatusCode};
 use slog_scope::warn;
 use smol::{Async, Task};
-use std::net::TcpListener;
-use tophat::{server::accept, Body};
+use std::{
+    convert::Infallible,
+    net::{TcpListener, TcpStream},
+};
+use tophat::{
+    server::{
+        accept,
+        router::{Router, RouterRequestExt},
+        Glitch, ResponseWriter, ResponseWritten,
+    },
+    Body, Request,
+};
 
-pub(crate) async fn healthcheck_server(
+async fn serve_health<T: HealthIndicator + 'static, W>(
+    req: Request,
+    mut resp_wtr: ResponseWriter<W>,
+) -> Result<ResponseWritten, Glitch>
+where
+    W: AsyncRead + AsyncWrite + Clone + Send + Sync + Unpin + 'static,
+{
+    if let Some(indicator) = req.data::<T>() {
+        *resp_wtr.response_mut() = indicator.health_check().response();
+    } else {
+        resp_wtr.set_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    resp_wtr.send().await
+}
+
+pub(crate) async fn healthcheck_server<T: HealthIndicator + Clone + 'static>(
     config: configuration::HealthConfig,
-    indicator: impl HealthIndicator + Clone + Send + Sync + 'static,
-) -> Result<()> {
+    check: T,
+) -> Result<Infallible> {
     if let Some(addr) = config.listen_addr {
-        let endpoint = Arc::new(config.endpoint.clone());
+        let router = Router::build()
+            .data(check)
+            .at(
+                Method::GET,
+                &config.endpoint,
+                serve_health::<T, Arc<Async<TcpStream>>>,
+            )
+            .finish();
+
         let listener = Async::<TcpListener>::bind(addr)
             .context("Couldn't listen on HTTP healthcheck address")?;
 
         loop {
             let (stream, _) = listener.accept().await?;
-            let indicator = indicator.clone();
             let stream = Arc::new(stream);
-            let endpoint = endpoint.clone();
+            let router = router.clone();
+
             let task = Task::spawn(async move {
-                let indicator = indicator.clone();
-                let endpoint = endpoint.clone();
-                let serve = accept(stream, |req, mut resp_wtr| async {
-                    let req = Arc::new(req);
-                    match (req.method(), req.uri().path()) {
-                        (&Method::GET, path) if path == *endpoint => {
-                            *resp_wtr.response_mut() = indicator.health_check().response();
-                        }
-                        _ => {
-                            resp_wtr.set_status(StatusCode::NOT_FOUND);
-                        }
-                    }
-                    resp_wtr.send().await
+                let serve = accept(stream, |req, resp_wtr| async {
+                    router.route(req, resp_wtr).await
                 })
                 .await;
 
@@ -51,6 +73,7 @@ pub(crate) async fn healthcheck_server(
     }
 }
 
+/// State of a health check result.
 #[derive(Debug)]
 pub(crate) enum State {
     /// Everything is ok with this indicator
@@ -76,6 +99,6 @@ impl State {
     }
 }
 
-pub(crate) trait HealthIndicator {
+pub(crate) trait HealthIndicator: Send + Sync + Unpin {
     fn health_check(&self) -> State;
 }
