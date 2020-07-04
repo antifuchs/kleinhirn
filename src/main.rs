@@ -7,7 +7,6 @@ use slog_scope::info;
 use std::io;
 use std::{env::current_dir, path::PathBuf};
 use structopt::StructOpt;
-use tokio::runtime::Runtime;
 
 fn setup_logger(config: &configuration::Config) -> Logger {
     use configuration::LogFormat;
@@ -50,7 +49,6 @@ struct Opt {
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let mut rt = Runtime::new()?;
 
     let config_file = opt.config_file.canonicalize()?;
     let mut settings = config::Config::default();
@@ -67,7 +65,7 @@ fn main() -> Result<()> {
     let cwd = current_dir()?;
     settings.base_dir = config_file.parent().map(|p| p.to_owned()).unwrap_or(cwd);
     info!("startup");
-    rt.block_on(async {
+    smol::run(async {
         kleinhirn::run(settings).await?;
 
         Ok(())

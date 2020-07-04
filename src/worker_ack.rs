@@ -2,13 +2,15 @@
 //! the kleinhirn control process.
 
 use anyhow::{Context, Result};
+use futures::io::{BufReader, BufWriter};
 use nix::fcntl::{fcntl, FcntlArg};
 use nix::unistd::close;
 use serde::Deserialize;
-use std::fmt;
-use std::os::unix::io::AsRawFd;
-use tokio::io::BufStream;
-use tokio::net::UnixStream;
+use smol::Async;
+use std::{
+    fmt,
+    os::unix::{io::AsRawFd, net::UnixStream},
+};
 
 /// Contains the worker's end of the control channel it uses to send
 /// ack messages to the supervisor process.
@@ -45,12 +47,14 @@ impl Drop for WorkerControlFD {
     }
 }
 
+pub(crate) type ControlChannel = BufWriter<BufReader<Async<UnixStream>>>;
+
 /// Opens a streaming UNIX domain socket pair that can be passed to a
 /// worker, and returns the FD number of the writable end, and the
 /// readable end of the pair.
-pub fn worker_status_stream() -> Result<(WorkerControlFD, BufStream<UnixStream>)> {
-    let (ours, theirs_with_cloexec) = std::os::unix::net::UnixStream::pair()
-        .context("Could not initialize preloader unix socket pair")?;
+pub fn worker_status_stream() -> Result<(WorkerControlFD, ControlChannel)> {
+    let (ours, theirs_with_cloexec) =
+        UnixStream::pair().context("Could not initialize preloader unix socket pair")?;
     let their_fd = fcntl(
         theirs_with_cloexec.as_raw_fd(),
         FcntlArg::F_DUPFD(theirs_with_cloexec.as_raw_fd()),
@@ -58,9 +62,12 @@ pub fn worker_status_stream() -> Result<(WorkerControlFD, BufStream<UnixStream>)
     .context("Could not clear CLOEXEC from the status pipe")?;
 
     close(theirs_with_cloexec.as_raw_fd()).context("closing the remote FD")?;
-    let socket = UnixStream::from_std(ours).context("unable to setup UNIX stream")?;
-    let reader = BufStream::new(socket);
-    Ok((WorkerControlFD::new(their_fd), reader))
+    Ok((
+        WorkerControlFD::new(their_fd),
+        BufWriter::new(BufReader::new(
+            Async::new(ours).context("Could not convert our FD to async")?,
+        )),
+    ))
 }
 
 /// The vocabulary of messages that any kind of process can send to
